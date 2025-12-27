@@ -381,6 +381,61 @@ const measureCacheTime = async ({ maxTime = 1e5 }) => {
 };
 
 // ----------------------------------------------------
+// -----  NOTION SYNC FUNCTIONS  ----------------------
+// ----------------------------------------------------
+
+/**
+ * Push to Notion (called after paper save)
+ */
+const pushToNotion = async (paperId) => {
+    return await sendMessageToBackground({ type: "writeNotionSync", paperId });
+};
+
+/**
+ * Check if Notion sync is enabled
+ */
+const shouldSyncNotion = async () => {
+    return !!(await getStorage("notionSyncState"));
+};
+
+/**
+ * Initialize Notion sync
+ */
+const initNotionSync = async () => {
+    if (!(await shouldSyncNotion())) {
+        return { ok: false, reason: "disabled" };
+    }
+
+    const token = await getStorage("notionToken");
+    const databaseId = await getStorage("notionDatabaseId");
+
+    if (!token || !databaseId) {
+        await setStorage("notionSyncState", false);
+        return { ok: false, reason: "missing_credentials" };
+    }
+
+    // Test connection
+    const result = await sendMessageToBackground({
+        type: "testNotionConnection",
+        token: token,
+        databaseId: databaseId
+    });
+
+    return result;
+};
+
+/**
+ * Manual sync all papers to Notion
+ */
+const syncAllToNotion = async () => {
+    const papers = await getStorage("papers");
+    return await sendMessageToBackground({
+        type: "syncAllNotionPapers",
+        papers: papers
+    });
+};
+
+// ----------------------------------------------------
 // -----  TESTS: modules for node.js environment  -----
 // ----------------------------------------------------
 if (typeof module !== "undefined" && module.exports != null) {
@@ -402,5 +457,9 @@ if (typeof module !== "undefined" && module.exports != null) {
         deleteGist,
         sleep,
         measureCacheTime,
+        pushToNotion,
+        shouldSyncNotion,
+        initNotionSync,
+        syncAllToNotion,
     };
 }

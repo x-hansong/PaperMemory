@@ -1283,6 +1283,130 @@ const setupModals = () => {
 };
 
 // ----------------------------
+// -----  Notion Setup  -------
+// ----------------------------
+
+const setupNotionSync = async () => {
+    // Load Notion credentials and state
+    const notionToken = await getStorage("notionToken");
+    const notionDatabaseId = await getStorage("notionDatabaseId");
+    const notionSyncState = await getStorage("notionSyncState");
+
+    if (notionToken) {
+        findEl({ element: "notion-token-input" }).value = notionToken;
+    }
+    if (notionDatabaseId) {
+        findEl({ element: "notion-database-input" }).value = notionDatabaseId;
+    }
+    if (notionToken && notionDatabaseId) {
+        showId("notion-sync-section");
+    }
+    if (notionSyncState) {
+        findEl({ element: "check-notion-sync" }).checked = true;
+    }
+
+    // Save Notion credentials
+    addListener("save-notion-credentials", "click", async () => {
+        const token = findEl({ element: "notion-token-input" }).value.trim();
+        const databaseId = findEl({ element: "notion-database-input" }).value.trim();
+
+        if (!token || !databaseId) {
+            setHTML("notion-feedback", "Please enter both token and database ID");
+            return;
+        }
+
+        await setStorage("notionToken", token);
+        await setStorage("notionDatabaseId", databaseId);
+
+        setHTML("notion-feedback", "Credentials saved successfully!");
+        showId("notion-sync-section");
+
+        setTimeout(() => {
+            setHTML("notion-feedback", "");
+        }, 3000);
+    });
+
+    // Test Notion connection
+    addListener("test-notion-connection", "click", async () => {
+        showId("notion-loader");
+        setHTML("notion-feedback", "Testing connection...");
+
+        const token = await getStorage("notionToken");
+        const databaseId = await getStorage("notionDatabaseId");
+
+        if (!token || !databaseId) {
+            hideId("notion-loader");
+            setHTML("notion-feedback", "Please save credentials first");
+            return;
+        }
+
+        const result = await sendMessageToBackground({
+            type: "testNotionConnection",
+            token: token,
+            databaseId: databaseId
+        });
+
+        hideId("notion-loader");
+
+        if (result.ok) {
+            setHTML("notion-feedback", "Connection successful! Database is accessible.");
+            showId("notion-sync-section");
+        } else {
+            setHTML("notion-feedback", `Connection failed: ${result.error}`);
+        }
+    });
+
+    // Manual sync all papers
+    addListener("manual-notion-sync", "click", async () => {
+        const papers = await getStorage("papers");
+        const paperCount = Object.keys(papers).filter(id => id !== "__dataVersion").length;
+
+        if (!confirm(`This will sync ${paperCount} papers to Notion. Papers already in Notion will be skipped. Continue?`)) {
+            return;
+        }
+
+        showId("notion-sync-loader");
+        setHTML("notion-sync-feedback", "Syncing papers...");
+        setHTML("notion-sync-progress", "");
+
+        const result = await sendMessageToBackground({
+            type: "syncAllNotionPapers",
+            papers: papers
+        });
+
+        hideId("notion-sync-loader");
+
+        if (result.ok) {
+            const msg = `Sync complete! Synced: ${result.synced}, Skipped: ${result.skipped}, Errors: ${result.errors.length}`;
+            setHTML("notion-sync-feedback", msg);
+
+            if (result.errors.length > 0) {
+                const errorDetails = result.errors.slice(0, 5).map(e =>
+                    `${e.paperId}: ${e.error}`
+                ).join("<br>");
+                setHTML("notion-sync-progress", `<small>First errors:<br>${errorDetails}</small>`);
+            }
+        } else {
+            setHTML("notion-sync-feedback", `Sync failed: ${result.error}`);
+        }
+    });
+
+    // Enable/disable automatic sync
+    addListener("check-notion-sync", "change", async (e) => {
+        await setStorage("notionSyncState", e.target.checked);
+
+        if (e.target.checked) {
+            const result = await sendMessageToBackground({ type: "initNotionSync" });
+            if (!result.ok) {
+                e.target.checked = false;
+                await setStorage("notionSyncState", false);
+                alert(`Failed to enable Notion sync: ${result.reason}`);
+            }
+        }
+    });
+};
+
+// ----------------------------
 // -----  Document Ready  -----
 // ----------------------------
 
@@ -1299,5 +1423,6 @@ const setupModals = () => {
     setupSourcesSelection();
     setupDataManagement();
     setupSync();
+    await setupNotionSync();
     setupModals();
 })();

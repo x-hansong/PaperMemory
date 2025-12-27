@@ -1,6 +1,6 @@
 {
     "name": "papermemory",
-    "version": "1.0.3",
+    "version": "1.1.0",
     "description": "N/A",
     "main": "gulpfile.js",
     "moduleDirectories": [
@@ -37,8 +37,6 @@
     "homepage": "https://github.com/vict0rsch/PaperMemory",
     "devDependencies": {
         "@octokit/request": "^8.1.6",
-        "browserify": "^17.0.0",
-        "esmify": "^2.1.1",
         "expect": "^29.7.0",
         "glob": "^10.3.10",
         "gulp": "^4.0.0",

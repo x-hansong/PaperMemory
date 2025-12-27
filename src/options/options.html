@@ -518,6 +518,81 @@
 
         <hr>
 
+        <div class="section">
+            <h2 id="notion-synchronization">Notion Synchronization</h2>
+
+            <h4 id="notion-how-it-works">How it works</h4>
+
+            <ul>
+                <li>Your papers are synced to a Notion database that you create and own</li>
+                <li>Each paper becomes a page in your database with all metadata as properties</li>
+                <li>Synchronization happens automatically when papers are added (if enabled)</li>
+                <li>You can also manually sync all papers at once</li>
+                <li>Papers already in Notion (by ID) are skipped to avoid duplicates</li>
+            </ul>
+
+            <h4 id="notion-setup">Setup Instructions</h4>
+
+            <ol>
+                <li>Create a Notion integration at <a href="https://www.notion.so/my-integrations" target="_blank"
+                        rel="noopener noreferrer">notion.so/my-integrations</a></li>
+                <li>Copy the "Internal Integration Token"</li>
+                <li>Create a new database in Notion with the required properties</li>
+                <li>Share the database with your integration (click "..." -> "Add connections")</li>
+                <li>Copy the database ID from the URL (the 32-character string after the workspace name)</li>
+            </ol>
+
+            <h4 id="notion-credentials">Credentials</h4>
+
+            <div>
+                <label for="notion-token-input">Notion Integration Token:</label>
+                <input name="notion-token-input" id="notion-token-input" type="password"
+                    placeholder="secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx" style="width: 400px;" />
+                <br />
+
+                <label for="notion-database-input">Notion Database ID:</label>
+                <input name="notion-database-input" id="notion-database-input" type="text"
+                    placeholder="1234567890abcdef1234567890abcdef" style="width: 400px;" />
+                <br />
+
+                <input id="save-notion-credentials" type="button" value="Save Credentials">
+                <input id="test-notion-connection" type="button" value="Test Connection">
+
+                <br />
+                <div><small>Note: your credentials are saved locally and do not leave your computer.</small></div>
+
+                <div>
+                    <div class="pm-loader" id="notion-loader" style="display: none;"></div>
+                    <p id="notion-feedback"></p>
+                </div>
+            </div>
+
+            <h4 id="notion-sync-controls">Sync Controls</h4>
+
+            <div id="notion-sync-section" style="display: none;">
+                <div>
+                    <label for="check-notion-sync">
+                        <input type="checkbox" id="check-notion-sync" name="check-notion-sync">
+                        Enable automatic Notion sync
+                    </label>
+                    <p><small>When enabled, papers will automatically sync to Notion when added to your memory</small>
+                    </p>
+                </div>
+
+                <div>
+                    <h5>Manual Sync</h5>
+                    <p>Sync all papers in your memory to Notion (skips existing papers)</p>
+                    <input id="manual-notion-sync" type="button" value="Sync All Papers to Notion">
+
+                    <div class="pm-loader" id="notion-sync-loader" style="display: none;"></div>
+                    <div id="notion-sync-progress"></div>
+                    <p id="notion-sync-feedback"></p>
+                </div>
+            </div>
+        </div>
+
+        <hr>
+
         <div class="section" id="footer">
 
             <p style="color: gray;"><em>If you like PaperMemory please consider sharing, starring on Github and rating

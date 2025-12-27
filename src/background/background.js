@@ -5,6 +5,7 @@ if (typeof importScripts === "function") {
         "../shared/js/utils/config.js",
         "../shared/js/utils/bibtexParser.js",
         "../shared/js/utils/functions.js",
+        "../shared/js/utils/notion.js",
         "../shared/js/utils/sync.js",
         "../shared/js/utils/data.js",
         "../shared/js/utils/paper.js",
@@ -332,6 +333,97 @@ const pushSyncPapers = async () => {
     console.groupEnd();
 };
 
+// Notion sync functions
+const pushNotionSyncPaper = async (paperId) => {
+    if (!(await shouldSyncNotion())) return;
+    if (!paperId) return;
+
+    try {
+        badgeWait("Notion...");
+        const start = Date.now();
+
+        const token = await getStorage("notionToken");
+        const databaseId = await getStorage("notionDatabaseId");
+        const papers = await getStorage("papers");
+
+        const paper = papers[paperId];
+        if (!paper) {
+            warn("Paper not found for Notion sync:", paperId);
+            return;
+        }
+
+        consoleHeader(`Syncing to Notion`);
+        log("Syncing paper to Notion:", paper.id);
+
+        const result = await syncPaperToNotion({
+            paper: paper,
+            databaseId: databaseId,
+            token: token,
+            skipExisting: true
+        });
+
+        const duration = (Date.now() - start) / 1e3;
+
+        if (result.success) {
+            if (result.skipped) {
+                info(`Paper already in Notion, skipped (${duration}s)`);
+            } else {
+                logOk(`Synced to Notion successfully (${duration}s)`);
+            }
+            badgeOk();
+        } else {
+            warn(`Failed to sync to Notion: ${result.error}`);
+            badgeError();
+        }
+
+        console.groupEnd();
+    } catch (e) {
+        logError("[pushNotionSyncPaper]", e);
+        badgeError();
+    }
+
+    badgeClear();
+};
+
+const syncAllNotionPapers = async (papers) => {
+    try {
+        badgeWait("Syncing...");
+        const start = Date.now();
+
+        const token = await getStorage("notionToken");
+        const databaseId = await getStorage("notionDatabaseId");
+
+        consoleHeader(`Bulk Sync to Notion`);
+
+        const paperCount = Object.keys(papers).filter(id => id !== "__dataVersion").length;
+        log(`Syncing ${paperCount} papers to Notion...`);
+
+        const result = await syncAllPapersToNotion({
+            papers: papers,
+            databaseId: databaseId,
+            token: token,
+            onProgress: (current, total) => {
+                log(`Progress: ${current}/${total}`);
+            }
+        });
+
+        const duration = (Date.now() - start) / 1e3;
+        logOk(`Bulk sync complete (${duration}s): Synced ${result.synced}, Skipped ${result.skipped}, Errors ${result.errors.length}`);
+
+        console.groupEnd();
+        badgeOk();
+        badgeClear();
+
+        return { ok: true, ...result };
+    } catch (e) {
+        logError("[syncAllNotionPapers]", e);
+        badgeError();
+        badgeClear();
+        console.groupEnd();
+        return { ok: false, error: e.message };
+    }
+};
+
 const fetchArxivXML = async (paperId) => {
     const arxivId = paperId.replace("Arxiv-", "").replace("_", "/");
     const response = await fetch(
@@ -388,6 +480,17 @@ chrome.runtime.onMessage.addListener((payload, sender, sendResponse) => {
         tryUnpaywall(payload.paper, false).then(sendResponse);
     } else if (payload.type === "fetch-arxiv-xml") {
         fetchArxivXML(payload.arxivId).then(sendResponse);
+    } else if (payload.type === "testNotionConnection") {
+        testNotionConnection({
+            token: payload.token,
+            databaseId: payload.databaseId
+        }).then(sendResponse);
+    } else if (payload.type === "writeNotionSync") {
+        pushNotionSyncPaper(payload.paperId).then(sendResponse);
+    } else if (payload.type === "syncAllNotionPapers") {
+        syncAllNotionPapers(payload.papers).then(sendResponse);
+    } else if (payload.type === "initNotionSync") {
+        initNotionSync().then(sendResponse);
     }
     return true;
 });

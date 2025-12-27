@@ -124,6 +124,7 @@ global.prefsCheckNames = [
     "checkMdYearVenue",
     "checkEnterLocalPdf",
     "checkWebsiteParsing",
+    "checkNotionSync",
 ];
 /**
  * Menu check names which should not default to true but to false
@@ -140,11 +141,17 @@ global.prefsCheckDefaultFalse = [
     "checkNoAuto",
     "checkMdYearVenue",
     "checkPreferPdf",
+    "checkNotionSync",
 ];
 /**
  * All keys to retrieve from the menu, the checkboxes + the custom pdf function
  */
-global.prefsStorageKeys = [...global.prefsCheckNames, "pdfTitleFn"];
+global.prefsStorageKeys = [
+    ...global.prefsCheckNames,
+    "pdfTitleFn",
+    "notionToken",
+    "notionDatabaseId",
+];
 
 /**
  * Extra data per source
