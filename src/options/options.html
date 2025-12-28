@@ -580,13 +580,42 @@
                 </div>
 
                 <div>
-                    <h5>Manual Sync</h5>
+                    <h5>Manual Sync (Local -> Notion)</h5>
                     <p>Sync all papers in your memory to Notion (skips existing papers)</p>
                     <input id="manual-notion-sync" type="button" value="Sync All Papers to Notion">
 
                     <div class="pm-loader" id="notion-sync-loader" style="display: none;"></div>
                     <div id="notion-sync-progress"></div>
                     <p id="notion-sync-feedback"></p>
+                </div>
+
+                <div style="margin-top: 2rem;">
+                    <h5>Pull from Notion (Notion -> Local)</h5>
+                    <p>Pull all papers from Notion database to local storage (Notion data takes priority and will overwrite local data)</p>
+                    <input id="pull-from-notion" type="button" value="Pull from Notion to Local">
+
+                    <div class="pm-loader" id="notion-pull-loader" style="display: none;"></div>
+                    <div id="notion-pull-progress"></div>
+                    <p id="notion-pull-feedback"></p>
+                </div>
+
+                <div style="margin-top: 2rem;">
+                    <h5>Automatic Sync Schedule</h5>
+                    <label for="check-notion-auto-sync">
+                        <input type="checkbox" id="check-notion-auto-sync" name="check-notion-auto-sync">
+                        Enable automatic scheduled sync (Notion -> Local)
+                    </label>
+                    <br />
+                    <label for="notion-sync-interval">Sync interval:</label>
+                    <select id="notion-sync-interval">
+                        <option value="30">Every 30 minutes</option>
+                        <option value="60" selected>Every hour</option>
+                        <option value="180">Every 3 hours</option>
+                        <option value="360">Every 6 hours</option>
+                        <option value="720">Every 12 hours</option>
+                        <option value="1440">Daily</option>
+                    </select>
+                    <p><small>Scheduled sync will automatically pull papers from Notion to local storage in the background</small></p>
                 </div>
             </div>
         </div>

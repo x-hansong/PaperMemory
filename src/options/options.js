@@ -1291,6 +1291,8 @@ const setupNotionSync = async () => {
     const notionToken = await getStorage("notionToken");
     const notionDatabaseId = await getStorage("notionDatabaseId");
     const notionSyncState = await getStorage("notionSyncState");
+    const autoSyncEnabled = await getStorage("notionAutoSyncEnabled");
+    const syncInterval = await getStorage("notionSyncInterval") || 60;
 
     if (notionToken) {
         findEl({ element: "notion-token-input" }).value = notionToken;
@@ -1304,6 +1306,10 @@ const setupNotionSync = async () => {
     if (notionSyncState) {
         findEl({ element: "check-notion-sync" }).checked = true;
     }
+    if (autoSyncEnabled) {
+        findEl({ element: "check-notion-auto-sync" }).checked = true;
+    }
+    findEl({ element: "notion-sync-interval" }).value = syncInterval;
 
     // Save Notion credentials
     addListener("save-notion-credentials", "click", async () => {
@@ -1402,6 +1408,67 @@ const setupNotionSync = async () => {
                 await setStorage("notionSyncState", false);
                 alert(`Failed to enable Notion sync: ${result.reason}`);
             }
+        }
+    });
+
+    // Pull from Notion to local
+    addListener("pull-from-notion", "click", async () => {
+        const papers = await getStorage("papers");
+        const localCount = Object.keys(papers).filter(id => id !== "__dataVersion").length;
+
+        const confirmMsg = `This will sync all papers from Notion to local storage.\n\n` +
+                          `You currently have ${localCount} papers locally.\n` +
+                          `Notion data will overwrite local data (Notion takes priority).\n\n` +
+                          `It's recommended to backup your local data first. Continue?`;
+
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+
+        showId("notion-pull-loader");
+        setHTML("notion-pull-feedback", "Syncing from Notion...");
+        setHTML("notion-pull-progress", "");
+
+        const result = await sendMessageToBackground({
+            type: "syncAllPapersFromNotion"
+        });
+
+        hideId("notion-pull-loader");
+
+        if (result.ok) {
+            const msg = `Sync complete! Added: ${result.added}, Updated: ${result.updated}, Skipped: ${result.skipped}, Errors: ${result.errors.length}`;
+            setHTML("notion-pull-feedback", msg);
+
+            if (result.errors.length > 0) {
+                const errorDetails = result.errors.slice(0, 5).map(e =>
+                    `${e.paperId}: ${e.error}`
+                ).join("<br>");
+                setHTML("notion-pull-progress", `<small>First errors:<br>${errorDetails}</small>`);
+            }
+
+            // 刷新页面以显示新数据
+            setTimeout(() => {
+                if (confirm("Sync successful! Reload page to see updates?")) {
+                    location.reload();
+                }
+            }, 2000);
+        } else {
+            setHTML("notion-pull-feedback", `Sync failed: ${result.error}`);
+        }
+    });
+
+    // Auto-sync toggle
+    addListener("check-notion-auto-sync", "change", async (e) => {
+        await setStorage("notionAutoSyncEnabled", e.target.checked);
+        await sendMessageToBackground({ type: "setupNotionAutoSync" });
+    });
+
+    // Sync interval change
+    addListener("notion-sync-interval", "change", async (e) => {
+        await setStorage("notionSyncInterval", parseInt(e.target.value));
+        const enabled = await getStorage("notionAutoSyncEnabled");
+        if (enabled) {
+            await sendMessageToBackground({ type: "setupNotionAutoSync" });
         }
     });
 };

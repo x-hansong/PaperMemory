@@ -55,7 +55,8 @@
         "unlimitedStorage",
         "downloads",
         "downloads.open",
-        "scripting"
+        "scripting",
+        "alarms"
     ],
     "host_permissions": ["*://*/*"],
     "content_scripts": [

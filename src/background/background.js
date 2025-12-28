@@ -424,6 +424,84 @@ const syncAllNotionPapers = async (papers) => {
     }
 };
 
+/**
+ * Sync all papers from Notion to local storage
+ */
+const syncAllFromNotion = async () => {
+    try {
+        badgeWait("Pulling...");
+        const start = Date.now();
+
+        const token = await getStorage("notionToken");
+        const databaseId = await getStorage("notionDatabaseId");
+
+        if (!token || !databaseId) {
+            badgeError();
+            badgeClear();
+            return { ok: false, error: "Missing Notion credentials" };
+        }
+
+        consoleHeader(`Pulling from Notion`);
+        log(`Syncing papers from Notion database...`);
+
+        const result = await syncAllPapersFromNotion({
+            databaseId: databaseId,
+            token: token,
+            onProgress: (current, total) => {
+                log(`Progress: ${current}/${total}`);
+            }
+        });
+
+        const duration = (Date.now() - start) / 1e3;
+
+        if (result.ok) {
+            logOk(`Sync from Notion complete (${duration}s): Added ${result.added}, Updated ${result.updated}, Skipped ${result.skipped}, Errors ${result.errors.length}`);
+            badgeOk();
+        } else {
+            warn(`Failed to sync from Notion: ${result.error}`);
+            badgeError();
+        }
+
+        console.groupEnd();
+        badgeClear();
+
+        return result;
+    } catch (e) {
+        logError("[syncAllFromNotion]", e);
+        badgeError();
+        badgeClear();
+        console.groupEnd();
+        return { ok: false, error: e.message };
+    }
+};
+
+/**
+ * Setup or clear Notion auto-sync alarm
+ */
+const setupNotionAutoSync = async () => {
+    try {
+        const autoSyncEnabled = await getStorage("notionAutoSyncEnabled");
+        const syncInterval = await getStorage("notionSyncInterval") || 60; // 默认60分钟
+
+        if (autoSyncEnabled) {
+            // 创建定时任务
+            chrome.alarms.create("notionAutoSync", {
+                periodInMinutes: syncInterval
+            });
+            log(`Notion auto-sync enabled: every ${syncInterval} minutes`);
+        } else {
+            // 清除定时任务
+            chrome.alarms.clear("notionAutoSync");
+            log("Notion auto-sync disabled");
+        }
+
+        return { ok: true };
+    } catch (e) {
+        logError("[setupNotionAutoSync]", e);
+        return { ok: false, error: e.message };
+    }
+};
+
 const fetchArxivXML = async (paperId) => {
     const arxivId = paperId.replace("Arxiv-", "").replace("_", "/");
     const response = await fetch(
@@ -491,6 +569,10 @@ chrome.runtime.onMessage.addListener((payload, sender, sendResponse) => {
         syncAllNotionPapers(payload.papers).then(sendResponse);
     } else if (payload.type === "initNotionSync") {
         initNotionSync().then(sendResponse);
+    } else if (payload.type === "syncAllPapersFromNotion") {
+        syncAllFromNotion().then(sendResponse);
+    } else if (payload.type === "setupNotionAutoSync") {
+        setupNotionAutoSync().then(sendResponse);
     }
     return true;
 });
@@ -576,3 +658,14 @@ chrome.runtime.onConnect.addListener(function (port) {
         });
     }
 });
+
+// Notion auto-sync alarm listener
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === "notionAutoSync") {
+        log("Running scheduled Notion sync...");
+        await syncAllFromNotion();
+    }
+});
+
+// Initialize Notion auto-sync on startup
+setupNotionAutoSync();

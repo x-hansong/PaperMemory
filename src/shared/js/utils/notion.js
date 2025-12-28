@@ -119,6 +119,12 @@ const paperToNotionProperties = (paper) => {
         return text.length > maxLength ? text.substring(0, maxLength - 3) + "..." : text;
     };
 
+    // Capitalize first letter of source for Notion Select
+    const capitalizeSource = (source) => {
+        if (!source) return null;
+        return source.charAt(0).toUpperCase() + source.slice(1);
+    };
+
     return {
         "Paper ID": {
             title: [{ text: { content: paper.id || "Unknown" } }]
@@ -160,7 +166,7 @@ const paperToNotionProperties = (paper) => {
             url: (typeof paperToAbs === 'function' ? paperToAbs(paper) : null) || null
         },
         "Source": {
-            select: paper.source ? { name: paper.source } : null
+            select: paper.source ? { name: capitalizeSource(paper.source) } : null
         },
         "Tags": {
             multi_select: (paper.tags || []).map(tag => ({ name: String(tag) }))
@@ -288,6 +294,260 @@ const syncAllPapersToNotion = async ({ papers, databaseId, token, onProgress }) 
 };
 
 /**
+ * Query all papers from Notion database with pagination
+ * @param {string} databaseId - Notion database ID
+ * @param {string} token - Notion API token
+ * @returns {Promise<object>} { ok: true, papers: [...] } or { ok: false, error: "..." }
+ */
+const queryAllNotionPapers = async ({ databaseId, token }) => {
+    let allResults = [];
+    let hasMore = true;
+    let startCursor = undefined;
+
+    try {
+        while (hasMore) {
+            const response = await notionRequest({
+                endpoint: `/databases/${databaseId}/query`,
+                method: "POST",
+                body: {
+                    start_cursor: startCursor,
+                    page_size: 100  // Notion API 最大值
+                },
+                token
+            });
+
+            allResults = allResults.concat(response.results);
+            hasMore = response.has_more;
+            startCursor = response.next_cursor;
+
+            // 速率限制：每次请求后暂停 334ms (3 requests/second)
+            if (hasMore) {
+                await new Promise(resolve => setTimeout(resolve, 334));
+            }
+        }
+
+        return { ok: true, papers: allResults };
+    } catch (error) {
+        console.error("[queryAllNotionPapers]", error);
+        return {
+            ok: false,
+            error: formatNotionError(error)
+        };
+    }
+};
+
+/**
+ * Convert Notion page properties to local paper object
+ * @param {object} notionPage - Notion page object
+ * @returns {object} Local paper object
+ */
+const notionPropertiesToPaper = (notionPage) => {
+    const props = notionPage.properties;
+
+    // 辅助函数：提取不同类型的属性值
+    const getText = (prop) => {
+        if (!prop || !prop.rich_text || prop.rich_text.length === 0) return "";
+        return prop.rich_text[0].plain_text || "";
+    };
+
+    const getTitle = (prop) => {
+        if (!prop || !prop.title || prop.title.length === 0) return "";
+        return prop.title[0].plain_text || "";
+    };
+
+    const getNumber = (prop) => {
+        return prop?.number || 0;
+    };
+
+    const getUrl = (prop) => {
+        return prop?.url || "";
+    };
+
+    const getSelect = (prop) => {
+        return prop?.select?.name || "";
+    };
+
+    const getMultiSelect = (prop) => {
+        if (!prop || !prop.multi_select) return [];
+        return prop.multi_select.map(item => item.name);
+    };
+
+    const getCheckbox = (prop) => {
+        return prop?.checkbox || false;
+    };
+
+    const getDate = (prop) => {
+        return prop?.date?.start || "";
+    };
+
+    // 构建 paper 对象
+    const sourceValue = getSelect(props["Source"]);
+    const paper = {
+        id: getTitle(props["Paper ID"]),
+        title: getText(props["Title"]),
+        author: getText(props["Authors"]),
+        venue: getText(props["Venue"]),
+        year: props["Year"]?.number ? String(props["Year"].number) : "",
+        source: sourceValue ? sourceValue.toLowerCase() : "arxiv",
+        tags: getMultiSelect(props["Tags"]),
+        note: getText(props["Notes"]),
+        doi: getText(props["DOI"]),
+        bibtex: getText(props["BibTeX"]),
+        key: getText(props["Key"]),
+        count: getNumber(props["Visit Count"]),
+        pdfLink: getUrl(props["PDF Link"]),
+        codeLink: getUrl(props["Code Link"]),
+        favorite: getCheckbox(props["Favorite"]),
+        addDate: getDate(props["Date Added"]),
+        lastOpenDate: getDate(props["Last Opened"]),
+        // 默认值
+        favoriteDate: "",
+        code: {},
+        extras: {},
+        md: ""  // 将在验证时自动生成
+    };
+
+    return paper;
+};
+
+/**
+ * Sync a single paper from Notion to local storage
+ * @param {object} notionPage - Notion page object
+ * @param {object} localPapers - Current local papers object
+ * @param {string} conflictStrategy - "notion" (Notion优先) or "local" (本地优先)
+ * @returns {object} Result with updated paper
+ */
+const syncPaperFromNotion = ({ notionPage, localPapers, conflictStrategy = "notion" }) => {
+    try {
+        const notionPaper = notionPropertiesToPaper(notionPage);
+
+        if (!notionPaper.id) {
+            return {
+                success: false,
+                error: "Paper ID is missing in Notion page"
+            };
+        }
+
+        const localPaper = localPapers[notionPaper.id];
+
+        if (!localPaper) {
+            // 本地不存在，直接添加
+            return {
+                success: true,
+                action: "added",
+                paper: notionPaper
+            };
+        }
+
+        if (conflictStrategy === "notion") {
+            // Notion 优先：完全覆盖本地数据
+            return {
+                success: true,
+                action: "updated",
+                paper: notionPaper
+            };
+        } else {
+            // 本地优先：跳过
+            return {
+                success: true,
+                action: "skipped",
+                paper: localPaper
+            };
+        }
+    } catch (error) {
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+};
+
+/**
+ * Sync all papers from Notion to local storage (bulk operation)
+ * @param {string} databaseId - Notion database ID
+ * @param {string} token - Notion API token
+ * @param {function} onProgress - Progress callback (current, total)
+ * @returns {object} Sync results
+ */
+const syncAllPapersFromNotion = async ({ databaseId, token, onProgress }) => {
+    const results = {
+        added: 0,
+        updated: 0,
+        skipped: 0,
+        errors: []
+    };
+
+    try {
+        // 1. 查询 Notion 数据库所有论文
+        const queryResult = await queryAllNotionPapers({ databaseId, token });
+
+        if (!queryResult.ok) {
+            return { ok: false, error: queryResult.error };
+        }
+
+        const notionPages = queryResult.papers;
+        const total = notionPages.length;
+
+        // 2. 获取本地论文数据
+        const localPapers = (await getStorage("papers")) || {};
+        const newPapers = { ...localPapers };
+
+        // 3. 逐个同步
+        for (let i = 0; i < total; i++) {
+            const notionPage = notionPages[i];
+
+            if (onProgress) {
+                onProgress(i + 1, total);
+            }
+
+            const result = syncPaperFromNotion({
+                notionPage,
+                localPapers: newPapers,
+                conflictStrategy: "notion"  // Notion 优先
+            });
+
+            if (result.success) {
+                const { action, paper } = result;
+                // 验证并修复 paper 数据
+                try {
+                    const { paper: validatedPaper } = validatePaper(paper, false);
+                    newPapers[validatedPaper.id] = validatedPaper;
+
+                    if (action === "added") {
+                        results.added++;
+                    } else if (action === "updated") {
+                        results.updated++;
+                    } else if (action === "skipped") {
+                        results.skipped++;
+                    }
+                } catch (validationError) {
+                    results.errors.push({
+                        paperId: paper.id,
+                        error: `Validation failed: ${validationError.message}`
+                    });
+                }
+            } else {
+                results.errors.push({
+                    paperId: notionPage.id || "unknown",
+                    error: result.error
+                });
+            }
+        }
+
+        // 4. 保存到本地存储
+        await setStorage("papers", newPapers);
+
+        return { ok: true, ...results };
+    } catch (error) {
+        console.error("[syncAllPapersFromNotion]", error);
+        return {
+            ok: false,
+            error: error.message
+        };
+    }
+};
+
+/**
  * Format Notion API errors into user-friendly messages
  */
 const formatNotionError = (error) => {
@@ -317,6 +577,10 @@ if (typeof module !== "undefined" && module.exports != null) {
         createNotionPage,
         syncPaperToNotion,
         syncAllPapersToNotion,
-        formatNotionError
+        formatNotionError,
+        queryAllNotionPapers,
+        notionPropertiesToPaper,
+        syncPaperFromNotion,
+        syncAllPapersFromNotion
     };
 }
