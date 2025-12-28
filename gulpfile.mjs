@@ -47,6 +47,7 @@ function utilsJS() {
             "src/shared/js/utils/notion.js",
             "src/shared/js/utils/sync.js",
             "src/shared/js/utils/data.js",
+            "src/shared/js/utils/aiTagging.js",
             "src/shared/js/utils/paper.js",
             "src/shared/js/utils/state.js",
             "src/shared/js/utils/parsers.js",

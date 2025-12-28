@@ -10,7 +10,8 @@ if (typeof importScripts === "function") {
         "../shared/js/utils/data.js",
         "../shared/js/utils/paper.js",
         "../shared/js/utils/state.js",
-        "../shared/js/utils/parsers.js"
+        "../shared/js/utils/parsers.js",
+        "../shared/js/utils/aiTagging.js"
     );
     console.log("Scripts loaded.");
 } else {
@@ -570,9 +571,27 @@ chrome.runtime.onMessage.addListener((payload, sender, sendResponse) => {
     } else if (payload.type === "initNotionSync") {
         initNotionSync().then(sendResponse);
     } else if (payload.type === "syncAllPapersFromNotion") {
-        syncAllFromNotion().then(sendResponse);
+        syncAllPapersFromNotion().then(sendResponse);
     } else if (payload.type === "setupNotionAutoSync") {
         setupNotionAutoSync().then(sendResponse);
+    } else if (payload.type === "testAIConnection") {
+        // Test AI connection
+        (async () => {
+            try {
+                const result = await callAIAPI({
+                    baseUrl: payload.baseUrl,
+                    apiKey: payload.apiKey,
+                    model: payload.model,
+                    messages: [{ role: "user", content: "Hello" }],
+                });
+                sendResponse({ ok: true });
+            } catch (error) {
+                sendResponse({ ok: false, error: error.message });
+            }
+        })();
+    } else if (payload.type === "tagAllUntaggedPapers") {
+        // Tag all untagged papers
+        tagAllUntaggedPapers().then(sendResponse);
     }
     return true;
 });

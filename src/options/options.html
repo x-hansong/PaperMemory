@@ -519,6 +519,105 @@
         <hr>
 
         <div class="section">
+            <h2 id="ai-auto-tagging">AI Auto-Tagging</h2>
+
+            <h4 id="ai-how-it-works">How it works</h4>
+            <ul>
+                <li>Uses OpenAI-compatible APIs (OpenAI, Azure OpenAI, local models, etc.) to automatically generate tags</li>
+                <li>Analyzes paper title and abstract to suggest relevant tags from your taxonomy</li>
+                <li>Can be triggered manually or automatically when saving papers</li>
+            </ul>
+
+            <h4 id="ai-configuration">Configuration</h4>
+            <div style="margin-bottom: 2rem;">
+                <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+                    <label for="ai-api-base-url" style="width: 200px;">API Base URL:</label>
+                    <input name="ai-api-base-url" id="ai-api-base-url" type="text"
+                        placeholder="https://api.openai.com/v1"
+                        style="flex: 1; max-width: 500px;">
+                </div>
+
+                <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+                    <label for="ai-api-key" style="width: 200px;">API Key:</label>
+                    <input name="ai-api-key" id="ai-api-key" type="password"
+                        placeholder="sk-..."
+                        style="flex: 1; max-width: 500px;">
+                </div>
+
+                <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+                    <label for="ai-model" style="width: 200px;">Model:</label>
+                    <input name="ai-model" id="ai-model" type="text"
+                        placeholder="gpt-4o-mini"
+                        style="flex: 1; max-width: 500px;">
+                </div>
+
+                <div style="margin-top: 1.5rem;">
+                    <input id="save-ai-config" type="button" value="Save Configuration">
+                    <input id="test-ai-connection" type="button" value="Test Connection">
+                </div>
+
+                <div style="margin-top: 1rem;">
+                    <div class="pm-loader" id="ai-loader" style="display: none;"></div>
+                    <p id="ai-feedback"></p>
+                </div>
+            </div>
+
+            <h4 id="ai-tagging-controls">Tagging Controls</h4>
+            <div id="ai-tagging-section" style="display: none;">
+                <div style="margin-bottom: 2rem;">
+                    <label for="check-ai-auto-tag">
+                        <input type="checkbox" id="check-ai-auto-tag" name="check-ai-auto-tag">
+                        Enable automatic AI tagging when saving papers
+                    </label>
+                    <p><small>When enabled, papers will be automatically tagged by AI when added to your memory</small></p>
+                </div>
+
+                <div style="margin-bottom: 2rem;">
+                    <h5>Manual Tagging</h5>
+                    <p>Generate AI tags for papers that don't have tags yet</p>
+                    <input id="tag-untagged-papers" type="button" value="Tag All Untagged Papers">
+
+                    <div class="pm-loader" id="ai-tagging-loader" style="display: none;"></div>
+                    <div id="ai-tagging-progress"></div>
+                    <p id="ai-tagging-feedback"></p>
+                </div>
+
+                <div style="margin-bottom: 2rem;">
+                    <h5>Custom Prompt</h5>
+                    <p><small>Customize the prompt used for AI tagging. Use placeholders: {AREA_TAGS}, {TASK_TAGS}, {METHOD_TAGS}, {TITLE}, {ABSTRACT}</small></p>
+                    <textarea id="ai-custom-prompt" rows="10" style="width: 100%; font-family: 'Fira Code', monospace; font-size: 0.9em;"></textarea>
+                    <div style="margin-top: 0.5rem;">
+                        <input id="save-ai-prompt" type="button" value="Save Custom Prompt">
+                        <input id="reset-ai-prompt" type="button" value="Reset to Default">
+                    </div>
+                    <p id="ai-prompt-feedback"></p>
+                </div>
+
+                <div style="margin-bottom: 2rem;">
+                    <h5>Tag Taxonomy Configuration</h5>
+                    <p><small>Configure the tag taxonomy used for AI tagging. Each tag should be on a separate line.</small></p>
+
+                    <h6>Area Tags</h6>
+                    <textarea id="ai-area-tags" rows="8" style="width: 100%; font-family: 'Fira Code', monospace; font-size: 0.85em;"></textarea>
+
+                    <h6 style="margin-top: 1rem;">Task Tags</h6>
+                    <textarea id="ai-task-tags" rows="8" style="width: 100%; font-family: 'Fira Code', monospace; font-size: 0.85em;"></textarea>
+
+                    <h6 style="margin-top: 1rem;">Method Tags</h6>
+                    <textarea id="ai-method-tags" rows="8" style="width: 100%; font-family: 'Fira Code', monospace; font-size: 0.85em;"></textarea>
+
+                    <div style="margin-top: 1rem;">
+                        <input id="save-ai-tags" type="button" value="Save Tag Taxonomy">
+                        <input id="reset-ai-tags" type="button" value="Reset to Default">
+                    </div>
+                    <p id="ai-tags-feedback"></p>
+                </div>
+            </div>
+        </div>
+
+        <hr>
+
+        <div class="section">
             <h2 id="notion-synchronization">Notion Synchronization</h2>
 
             <h4 id="notion-how-it-works">How it works</h4>

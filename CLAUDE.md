@@ -196,3 +196,7 @@ mkdocs serve
 - `src/shared/js/utils/parsers.js`: Paper parsing logic for all sources
 - `src/content_scripts/content_script.js`: Auto-detection and page modification
 - `test/data/urls.json`: Test URLs for all supported paper sources
+
+
+## 要求
+每次改完代码都运行：gulp build

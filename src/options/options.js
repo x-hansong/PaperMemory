@@ -1283,6 +1283,223 @@ const setupModals = () => {
 };
 
 // ----------------------------
+// -----  AI Tagging Setup  ---
+// ----------------------------
+
+const setupAITagging = async () => {
+    // Load AI configuration
+    const aiBaseUrl = await getStorage("aiApiBaseUrl") || global.aiTaggingDefaults.baseUrl;
+    const aiApiKey = await getStorage("aiApiKey") || "";
+    const aiModel = await getStorage("aiModel") || global.aiTaggingDefaults.model;
+    const aiAutoTag = await getStorage("aiAutoTagOnSave") || false;
+    const aiPrompt = await getStorage("aiTaggingPrompt") || global.aiTaggingDefaults.prompt;
+    const aiAreaTags = await getStorage("aiAreaTags") || global.aiTaggingDefaults.areaTags;
+    const aiTaskTags = await getStorage("aiTaskTags") || global.aiTaggingDefaults.taskTags;
+    const aiMethodTags = await getStorage("aiMethodTags") || global.aiTaggingDefaults.methodTags;
+
+    // Populate form fields
+    if (aiBaseUrl) {
+        findEl({ element: "ai-api-base-url" }).value = aiBaseUrl;
+    }
+    if (aiApiKey) {
+        findEl({ element: "ai-api-key" }).value = aiApiKey;
+    }
+    if (aiModel) {
+        findEl({ element: "ai-model" }).value = aiModel;
+    }
+    if (aiPrompt) {
+        findEl({ element: "ai-custom-prompt" }).value = aiPrompt;
+    }
+    if (aiAreaTags) {
+        findEl({ element: "ai-area-tags" }).value = aiAreaTags.join("\n");
+    }
+    if (aiTaskTags) {
+        findEl({ element: "ai-task-tags" }).value = aiTaskTags.join("\n");
+    }
+    if (aiMethodTags) {
+        findEl({ element: "ai-method-tags" }).value = aiMethodTags.join("\n");
+    }
+
+    // Show tagging controls if configured
+    if (aiApiKey && aiBaseUrl) {
+        showId("ai-tagging-section");
+    }
+
+    if (aiAutoTag) {
+        findEl({ element: "check-ai-auto-tag" }).checked = true;
+    }
+
+    // Save AI configuration
+    addListener("save-ai-config", "click", async () => {
+        const baseUrl = findEl({ element: "ai-api-base-url" }).value.trim();
+        const apiKey = findEl({ element: "ai-api-key" }).value.trim();
+        const model = findEl({ element: "ai-model" }).value.trim();
+
+        if (!baseUrl || !apiKey || !model) {
+            setHTML("ai-feedback", "Please fill in all required fields");
+            return;
+        }
+
+        await setStorage("aiApiBaseUrl", baseUrl);
+        await setStorage("aiApiKey", apiKey);
+        await setStorage("aiModel", model);
+        await setStorage("aiTaggingEnabled", true);
+
+        setHTML("ai-feedback", "Configuration saved successfully!");
+        showId("ai-tagging-section");
+
+        setTimeout(() => {
+            setHTML("ai-feedback", "");
+        }, 3000);
+    });
+
+    // Test AI connection
+    addListener("test-ai-connection", "click", async () => {
+        showId("ai-loader");
+        setHTML("ai-feedback", "Testing connection...");
+
+        const baseUrl = findEl({ element: "ai-api-base-url" }).value.trim();
+        const apiKey = findEl({ element: "ai-api-key" }).value.trim();
+        const model = findEl({ element: "ai-model" }).value.trim();
+
+        if (!baseUrl || !apiKey || !model) {
+            hideId("ai-loader");
+            setHTML("ai-feedback", "Please save configuration first");
+            return;
+        }
+
+        const result = await sendMessageToBackground({
+            type: "testAIConnection",
+            baseUrl,
+            apiKey,
+            model,
+        });
+
+        hideId("ai-loader");
+
+        if (result.ok) {
+            setHTML("ai-feedback", "Connection successful! AI tagging is ready.");
+            showId("ai-tagging-section");
+        } else {
+            setHTML("ai-feedback", `Connection failed: ${result.error}`);
+        }
+    });
+
+    // Tag all untagged papers
+    addListener("tag-untagged-papers", "click", async () => {
+        const papers = await getStorage("papers") || {};
+        const untaggedCount = Object.values(papers).filter(p => !p.tags || p.tags.length === 0).length;
+
+        if (untaggedCount === 0) {
+            setHTML("ai-tagging-feedback", "All papers already have tags!");
+            return;
+        }
+
+        if (!confirm(`This will generate AI tags for ${untaggedCount} untagged papers. This may take a while. Continue?`)) {
+            return;
+        }
+
+        showId("ai-tagging-loader");
+        setHTML("ai-tagging-feedback", "Generating tags...");
+        setHTML("ai-tagging-progress", "");
+
+        const result = await sendMessageToBackground({
+            type: "tagAllUntaggedPapers",
+        });
+
+        hideId("ai-tagging-loader");
+
+        if (result.ok) {
+            const msg = `Successfully tagged ${result.success} papers. Failed: ${result.failed}`;
+            setHTML("ai-tagging-feedback", msg);
+
+            if (result.failed > 0 && result.errors) {
+                const errorDetails = result.errors.slice(0, 3).join("<br>");
+                setHTML("ai-tagging-progress", `<small>First errors:<br>${errorDetails}</small>`);
+            }
+        } else {
+            setHTML("ai-tagging-feedback", `Tagging failed: ${result.error}`);
+        }
+    });
+
+    // Enable/disable auto-tagging
+    addListener("check-ai-auto-tag", "change", async (e) => {
+        await setStorage("aiAutoTagOnSave", e.target.checked);
+    });
+
+    // Save custom prompt
+    addListener("save-ai-prompt", "click", async () => {
+        const prompt = findEl({ element: "ai-custom-prompt" }).value.trim();
+
+        if (!prompt) {
+            setHTML("ai-prompt-feedback", "Prompt cannot be empty");
+            return;
+        }
+
+        await setStorage("aiTaggingPrompt", prompt);
+        setHTML("ai-prompt-feedback", "Custom prompt saved!");
+
+        setTimeout(() => {
+            setHTML("ai-prompt-feedback", "");
+        }, 3000);
+    });
+
+    // Reset to default prompt
+    addListener("reset-ai-prompt", "click", async () => {
+        const defaultPrompt = global.aiTaggingDefaults.prompt;
+        findEl({ element: "ai-custom-prompt" }).value = defaultPrompt;
+        await setStorage("aiTaggingPrompt", defaultPrompt);
+        setHTML("ai-prompt-feedback", "Prompt reset to default!");
+
+        setTimeout(() => {
+            setHTML("ai-prompt-feedback", "");
+        }, 3000);
+    });
+
+    // Save tag taxonomy
+    addListener("save-ai-tags", "click", async () => {
+        const areaTagsText = findEl({ element: "ai-area-tags" }).value.trim();
+        const taskTagsText = findEl({ element: "ai-task-tags" }).value.trim();
+        const methodTagsText = findEl({ element: "ai-method-tags" }).value.trim();
+
+        const areaTags = areaTagsText.split("\n").map(t => t.trim()).filter(t => t.length > 0);
+        const taskTags = taskTagsText.split("\n").map(t => t.trim()).filter(t => t.length > 0);
+        const methodTags = methodTagsText.split("\n").map(t => t.trim()).filter(t => t.length > 0);
+
+        await setStorage("aiAreaTags", areaTags);
+        await setStorage("aiTaskTags", taskTags);
+        await setStorage("aiMethodTags", methodTags);
+
+        setHTML("ai-tags-feedback", "Tag taxonomy saved!");
+
+        setTimeout(() => {
+            setHTML("ai-tags-feedback", "");
+        }, 3000);
+    });
+
+    // Reset tag taxonomy to default
+    addListener("reset-ai-tags", "click", async () => {
+        const defaultAreaTags = global.aiTaggingDefaults.areaTags;
+        const defaultTaskTags = global.aiTaggingDefaults.taskTags;
+        const defaultMethodTags = global.aiTaggingDefaults.methodTags;
+
+        findEl({ element: "ai-area-tags" }).value = defaultAreaTags.join("\n");
+        findEl({ element: "ai-task-tags" }).value = defaultTaskTags.join("\n");
+        findEl({ element: "ai-method-tags" }).value = defaultMethodTags.join("\n");
+
+        await setStorage("aiAreaTags", defaultAreaTags);
+        await setStorage("aiTaskTags", defaultTaskTags);
+        await setStorage("aiMethodTags", defaultMethodTags);
+
+        setHTML("ai-tags-feedback", "Tag taxonomy reset to default!");
+
+        setTimeout(() => {
+            setHTML("ai-tags-feedback", "");
+        }, 3000);
+    });
+};
+
+// ----------------------------
 // -----  Notion Setup  -------
 // ----------------------------
 
@@ -1490,6 +1707,7 @@ const setupNotionSync = async () => {
     setupSourcesSelection();
     setupDataManagement();
     setupSync();
+    await setupAITagging();
     await setupNotionSync();
     setupModals();
 })();
