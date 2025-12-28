@@ -403,8 +403,12 @@ const syncAllNotionPapers = async (papers) => {
             papers: papers,
             databaseId: databaseId,
             token: token,
-            onProgress: (current, total) => {
-                log(`Progress: ${current}/${total}`);
+            onProgress: (current, total, message) => {
+                if (message) {
+                    log(`Progress: ${current}/${total} - ${message}`);
+                } else {
+                    log(`Progress: ${current}/${total}`);
+                }
             }
         });
 

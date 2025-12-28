@@ -1584,13 +1584,28 @@ const setupNotionSync = async () => {
         const papers = await getStorage("papers");
         const paperCount = Object.keys(papers).filter(id => id !== "__dataVersion").length;
 
-        if (!confirm(`This will sync ${paperCount} papers to Notion. Papers already in Notion will be skipped. Continue?`)) {
+        // Estimate sync time (based on rate limit: 3 requests/second)
+        const estimatedSeconds = Math.ceil(paperCount / 3);
+        const estimatedMinutes = Math.floor(estimatedSeconds / 60);
+        const remainingSeconds = estimatedSeconds % 60;
+        const timeEstimate = estimatedMinutes > 0
+            ? `~${estimatedMinutes}m ${remainingSeconds}s`
+            : `~${estimatedSeconds}s`;
+
+        const confirmMsg = `This will sync ${paperCount} papers to Notion.\n` +
+                          `Papers already in Notion will be skipped.\n` +
+                          `Estimated time: ${timeEstimate}\n\n` +
+                          `Continue?`;
+
+        if (!confirm(confirmMsg)) {
             return;
         }
 
         showId("notion-sync-loader");
-        setHTML("notion-sync-feedback", "Syncing papers...");
-        setHTML("notion-sync-progress", "");
+        setHTML("notion-sync-feedback", `Syncing ${paperCount} papers...`);
+        setHTML("notion-sync-progress", `Estimated time: ${timeEstimate}`);
+
+        const startTime = Date.now();
 
         const result = await sendMessageToBackground({
             type: "syncAllNotionPapers",
@@ -1599,15 +1614,25 @@ const setupNotionSync = async () => {
 
         hideId("notion-sync-loader");
 
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        const durationMinutes = Math.floor(duration / 60);
+        const durationSeconds = (duration % 60).toFixed(1);
+        const actualTime = durationMinutes > 0
+            ? `${durationMinutes}m ${durationSeconds}s`
+            : `${durationSeconds}s`;
+
         if (result.ok) {
-            const msg = `Sync complete! Synced: ${result.synced}, Skipped: ${result.skipped}, Errors: ${result.errors.length}`;
+            const msg = `Sync complete! (Time: ${actualTime})<br>` +
+                       `Synced: ${result.synced}, Skipped: ${result.skipped}, Errors: ${result.errors.length}`;
             setHTML("notion-sync-feedback", msg);
 
             if (result.errors.length > 0) {
                 const errorDetails = result.errors.slice(0, 5).map(e =>
                     `${e.paperId}: ${e.error}`
                 ).join("<br>");
-                setHTML("notion-sync-progress", `<small>First errors:<br>${errorDetails}</small>`);
+                setHTML("notion-sync-progress", `<small>First ${Math.min(5, result.errors.length)} errors:<br>${errorDetails}</small>`);
+            } else {
+                setHTML("notion-sync-progress", "");
             }
         } else {
             setHTML("notion-sync-feedback", `Sync failed: ${result.error}`);

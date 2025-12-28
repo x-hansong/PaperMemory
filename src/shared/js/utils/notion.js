@@ -247,7 +247,8 @@ const syncPaperToNotion = async ({ paper, databaseId, token, skipExisting = true
 };
 
 /**
- * Sync all papers to Notion (bulk operation)
+ * Sync all papers to Notion (bulk operation) - OPTIMIZED
+ * 优化: 批量检查存在性,减少 API 调用次数
  */
 const syncAllPapersToNotion = async ({ papers, databaseId, token, onProgress }) => {
     const results = {
@@ -259,31 +260,52 @@ const syncAllPapersToNotion = async ({ papers, databaseId, token, onProgress }) 
     const paperIds = Object.keys(papers).filter(id => id !== "__dataVersion");
     const total = paperIds.length;
 
+    // 优化: 先批量获取所有已存在的 papers (减少 ~1000 次 API 调用)
+    if (onProgress) {
+        onProgress(0, total, "正在检查已存在的论文...");
+    }
+
+    const queryResult = await queryAllNotionPapers({ databaseId, token });
+    const existingPapersMap = new Map();
+
+    if (queryResult.ok) {
+        // 构建 paperId -> notionPageId 的映射
+        for (const notionPage of queryResult.papers) {
+            const paperId = notionPage.properties["Paper ID"]?.title?.[0]?.plain_text;
+            if (paperId) {
+                existingPapersMap.set(paperId, notionPage.id);
+            }
+        }
+    }
+
+    // 开始同步
     for (let i = 0; i < total; i++) {
         const paperId = paperIds[i];
         const paper = papers[paperId];
 
         if (onProgress) {
-            onProgress(i + 1, total);
+            onProgress(i + 1, total, `正在同步: ${paper.title?.substring(0, 50) || paperId}...`);
         }
 
-        const result = await syncPaperToNotion({
-            paper,
+        // 使用本地 Map 检查,而不是调用 API
+        if (existingPapersMap.has(paper.id)) {
+            results.skipped++;
+            continue;
+        }
+
+        // 创建新 paper
+        const createResult = await createNotionPage({
             databaseId,
-            token,
-            skipExisting: true
+            paper,
+            token
         });
 
-        if (result.success) {
-            if (result.skipped) {
-                results.skipped++;
-            } else {
-                results.synced++;
-            }
+        if (createResult.ok) {
+            results.synced++;
         } else {
             results.errors.push({
                 paperId: paper.id,
-                error: result.error
+                error: createResult.error
             });
         }
 
@@ -292,6 +314,199 @@ const syncAllPapersToNotion = async ({ papers, databaseId, token, onProgress }) 
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
     }
+
+    // 更新最后同步时间
+    await setStorage("lastNotionSyncTime", new Date().toISOString());
+
+    return results;
+};
+
+/**
+ * Batch sync with progress saving (supports resume)
+ * 分批同步,支持断点续传
+ */
+const syncPapersToNotionWithProgress = async ({ papers, databaseId, token, onProgress, batchSize = 100 }) => {
+    const results = {
+        synced: 0,
+        skipped: 0,
+        errors: [],
+        completed: false
+    };
+
+    const paperIds = Object.keys(papers).filter(id => id !== "__dataVersion");
+    const total = paperIds.length;
+
+    // 获取上次同步进度
+    const syncProgress = await getStorage("notionSyncProgress") || { lastIndex: 0, syncedIds: [] };
+    const startIndex = syncProgress.lastIndex || 0;
+
+    if (startIndex >= total) {
+        // 已经全部同步完成
+        results.completed = true;
+        await setStorage("notionSyncProgress", null);
+        return results;
+    }
+
+    if (onProgress) {
+        onProgress(startIndex, total, `从第 ${startIndex + 1} 篇继续同步...`);
+    }
+
+    // 批量获取已存在的papers
+    const queryResult = await queryAllNotionPapers({ databaseId, token });
+    const existingPapersMap = new Map();
+
+    if (queryResult.ok) {
+        for (const notionPage of queryResult.papers) {
+            const paperId = notionPage.properties["Paper ID"]?.title?.[0]?.plain_text;
+            if (paperId) {
+                existingPapersMap.set(paperId, notionPage.id);
+            }
+        }
+    }
+
+    // 分批同步
+    for (let i = startIndex; i < total; i += batchSize) {
+        const batchEnd = Math.min(i + batchSize, total);
+        const batchIds = paperIds.slice(i, batchEnd);
+
+        for (let j = 0; j < batchIds.length; j++) {
+            const paperId = batchIds[j];
+            const paper = papers[paperId];
+            const currentIndex = i + j;
+
+            if (onProgress) {
+                onProgress(currentIndex + 1, total, `正在同步: ${paper.title?.substring(0, 50) || paperId}...`);
+            }
+
+            if (existingPapersMap.has(paper.id)) {
+                results.skipped++;
+            } else {
+                const createResult = await createNotionPage({ databaseId, paper, token });
+                if (createResult.ok) {
+                    results.synced++;
+                } else {
+                    results.errors.push({ paperId: paper.id, error: createResult.error });
+                }
+            }
+
+            // Rate limiting
+            if ((currentIndex + 1) % 3 === 0) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        // 保存进度
+        await setStorage("notionSyncProgress", {
+            lastIndex: batchEnd,
+            syncedIds: [...(syncProgress.syncedIds || []), ...batchIds]
+        });
+
+        if (onProgress) {
+            onProgress(batchEnd, total, `已完成 ${batchEnd}/${total} 篇...`);
+        }
+    }
+
+    // 同步完成,清除进度
+    results.completed = true;
+    await setStorage("notionSyncProgress", null);
+    await setStorage("lastNotionSyncTime", new Date().toISOString());
+
+    return results;
+};
+
+/**
+ * Incremental sync: only sync papers added/modified after last sync
+ * 增量同步: 只同步上次同步后新增或修改的论文
+ */
+const syncIncrementalPapersToNotion = async ({ papers, databaseId, token, onProgress }) => {
+    const results = {
+        synced: 0,
+        skipped: 0,
+        errors: []
+    };
+
+    // 获取上次同步时间
+    const lastSyncTime = await getStorage("lastNotionSyncTime");
+
+    if (!lastSyncTime) {
+        // 如果没有上次同步时间,执行全量同步
+        return await syncAllPapersToNotion({ papers, databaseId, token, onProgress });
+    }
+
+    // 筛选出需要同步的papers (addDate > lastSyncTime)
+    const lastSyncDate = new Date(lastSyncTime);
+    const papersToSync = Object.keys(papers)
+        .filter(id => id !== "__dataVersion")
+        .filter(id => {
+            const paper = papers[id];
+            if (!paper.addDate) return false;
+            const addDate = new Date(paper.addDate);
+            return addDate > lastSyncDate;
+        });
+
+    const total = papersToSync.length;
+
+    if (total === 0) {
+        if (onProgress) {
+            onProgress(0, 0, "没有需要同步的新论文");
+        }
+        return results;
+    }
+
+    if (onProgress) {
+        onProgress(0, total, `发现 ${total} 篇新论文需要同步...`);
+    }
+
+    // 批量检查已存在的papers
+    const queryResult = await queryAllNotionPapers({ databaseId, token });
+    const existingPapersMap = new Map();
+
+    if (queryResult.ok) {
+        for (const notionPage of queryResult.papers) {
+            const paperId = notionPage.properties["Paper ID"]?.title?.[0]?.plain_text;
+            if (paperId) {
+                existingPapersMap.set(paperId, notionPage.id);
+            }
+        }
+    }
+
+    // 同步新papers
+    for (let i = 0; i < total; i++) {
+        const paperId = papersToSync[i];
+        const paper = papers[paperId];
+
+        if (onProgress) {
+            onProgress(i + 1, total, `正在同步: ${paper.title?.substring(0, 50) || paperId}...`);
+        }
+
+        if (existingPapersMap.has(paper.id)) {
+            results.skipped++;
+            continue;
+        }
+
+        const createResult = await createNotionPage({
+            databaseId,
+            paper,
+            token
+        });
+
+        if (createResult.ok) {
+            results.synced++;
+        } else {
+            results.errors.push({
+                paperId: paper.id,
+                error: createResult.error
+            });
+        }
+
+        // Rate limiting
+        if ((i + 1) % 3 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+    }
+
+    // 更新最后同步时间
+    await setStorage("lastNotionSyncTime", new Date().toISOString());
 
     return results;
 };
@@ -581,6 +796,8 @@ if (typeof module !== "undefined" && module.exports != null) {
         createNotionPage,
         syncPaperToNotion,
         syncAllPapersToNotion,
+        syncIncrementalPapersToNotion,
+        syncPapersToNotionWithProgress,
         formatNotionError,
         queryAllNotionPapers,
         notionPropertiesToPaper,

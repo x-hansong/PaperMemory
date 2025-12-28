@@ -10,3 +10,6 @@ coverage
 .cache
 .todo
 site/
+claude-continuity-kit
+# Continuous Claude cache (local only)
+.claude/cache/
