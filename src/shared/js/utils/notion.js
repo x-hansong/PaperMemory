@@ -135,6 +135,9 @@ const paperToNotionProperties = (paper) => {
         "Authors": {
             rich_text: [{ text: { content: truncate(paper.author || "") } }]
         },
+        "Abstract": {
+            rich_text: [{ text: { content: truncate(paper.abstract || "", 2000) } }]
+        },
         "Venue": {
             rich_text: [{ text: { content: truncate(paper.venue || "") } }]
         },
@@ -386,6 +389,7 @@ const notionPropertiesToPaper = (notionPage) => {
         id: getTitle(props["Paper ID"]),
         title: getText(props["Title"]),
         author: getText(props["Authors"]),
+        abstract: getText(props["Abstract"]),
         venue: getText(props["Venue"]),
         year: props["Year"]?.number ? String(props["Year"].number) : "",
         source: sourceValue ? sourceValue.toLowerCase() : "arxiv",

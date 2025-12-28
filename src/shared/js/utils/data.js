@@ -15,7 +15,7 @@ const migrateData = async (papers, manifestDataVersion, store = true) => {
     }
     const currentVersion = papers["__dataVersion"] || -1;
     var deleteIds = [];
-    const latestDataVersion = 10000;
+    const latestDataVersion = 10100;
 
     let newPapers = { ...papers };
 
@@ -199,6 +199,13 @@ const migrateData = async (papers, manifestDataVersion, store = true) => {
                         papers[id].doi = doi;
                         migrationSummaries[id].push("(m10001) add doi from bibtex");
                     }
+                }
+            }
+            if (currentVersion < 10100) {
+                // 为所有现有论文添加 abstract 字段
+                if (!papers[id].hasOwnProperty("abstract")) {
+                    papers[id].abstract = "";
+                    migrationSummaries[id].push("(m10100) add abstract field with default empty string");
                 }
             }
         }
@@ -496,6 +503,16 @@ const validatePaper = (paper, log = true) => {
                     const d = new Date(p);
                 } catch (error) {
                     return `Invalid addDate (could not parse as date: ${error})`;
+                }
+            },
+        },
+        abstract: {
+            type: "string",
+            desc: "the paper's abstract",
+            default: (p) => "",
+            validation: (p) => {
+                if (typeof p !== "string") {
+                    return `Invalid abstract type: expected string, got ${typeof p}`;
                 }
             },
         },

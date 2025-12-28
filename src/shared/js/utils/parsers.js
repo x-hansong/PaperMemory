@@ -388,6 +388,13 @@ const makeArxivPaper = async (url) => {
     let title = doc.querySelector("entry title");
     title = title?.textContent || title?.innerText || "";
     const year = doc.querySelector("entry published").innerHTML.slice(0, 4);
+
+    // 提取 abstract（从 <summary> 标签）
+    let abstract = doc.querySelector("entry summary");
+    abstract = abstract?.textContent || abstract?.innerText || "";
+    // 清理多余的空白字符和换行符
+    abstract = abstract.trim().replace(/\s+/g, " ");
+
     const key =
         authors[0].split(" ").last().toLowerCase() +
         year +
@@ -405,7 +412,7 @@ const makeArxivPaper = async (url) => {
 
     const venue = "";
 
-    return { author, bibtex, id, key, pdfLink, title, venue, year };
+    return { abstract, author, bibtex, id, key, pdfLink, title, venue, year };
 };
 
 const makeNeuripsPaper = async (url) => {
