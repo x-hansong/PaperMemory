@@ -575,7 +575,7 @@ chrome.runtime.onMessage.addListener((payload, sender, sendResponse) => {
     } else if (payload.type === "initNotionSync") {
         initNotionSync().then(sendResponse);
     } else if (payload.type === "syncAllPapersFromNotion") {
-        syncAllPapersFromNotion().then(sendResponse);
+        syncAllFromNotion().then(sendResponse);
     } else if (payload.type === "setupNotionAutoSync") {
         setupNotionAutoSync().then(sendResponse);
     } else if (payload.type === "testAIConnection") {
