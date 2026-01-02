@@ -331,6 +331,11 @@ To add support for a new academic venue:
 
 ## Agent Reports
 
+### onboard (2025-12-29T03:29:24.343Z)
+- Task: 
+- Summary: 
+- Output: `.claude/cache/agents/onboard/latest-output.md`
+
 ### onboard (2025-12-29T03:17:29.941Z)
 - Task: 
 - Summary: 

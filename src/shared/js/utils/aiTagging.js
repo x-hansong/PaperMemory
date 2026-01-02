@@ -69,6 +69,14 @@ const callAIAPI = async ({ baseUrl, apiKey, model, messages, temperature = 0.3 }
             body: JSON.stringify(requestBody),
         });
 
+        // Check if response is JSON before parsing
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            const text = await response.text();
+            console.error("[AI Tagging] Non-JSON response:", text.substring(0, 200));
+            throw new Error(`AI API returned non-JSON response (${response.status}). Check API endpoint and CORS settings.`);
+        }
+
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(

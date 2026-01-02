@@ -86,6 +86,7 @@ const testNotionConnection = async ({ token, databaseId }) => {
 
 /**
  * Check if a paper already exists in Notion database
+ * @returns {Object} { exists: boolean, page: object|null, error: string|null }
  */
 const checkNotionPageExists = async ({ databaseId, paperId, token }) => {
     try {
@@ -103,10 +104,14 @@ const checkNotionPageExists = async ({ databaseId, paperId, token }) => {
             token
         });
 
-        return response.results.length > 0 ? response.results[0] : null;
+        if (response.results.length > 0) {
+            return { exists: true, page: response.results[0], error: null };
+        } else {
+            return { exists: false, page: null, error: null };
+        }
     } catch (error) {
         logError("[checkNotionPageExists]", error);
-        return null;
+        return { exists: false, page: null, error: formatNotionError(error) };
     }
 };
 
@@ -217,16 +222,26 @@ const createNotionPage = async ({ databaseId, paper, token }) => {
  */
 const syncPaperToNotion = async ({ paper, databaseId, token, skipExisting = true }) => {
     try {
-        const existingPage = await checkNotionPageExists({
+        const checkResult = await checkNotionPageExists({
             databaseId,
             paperId: paper.id,
             token
         });
 
-        if (existingPage && skipExisting) {
+        // If existence check failed, return error without creating duplicate
+        if (checkResult.error) {
+            return {
+                success: false,
+                error: `Failed to check existence: ${checkResult.error}`
+            };
+        }
+
+        // If paper exists and we should skip, return success
+        if (checkResult.exists && skipExisting) {
             return { success: true, skipped: true };
         }
 
+        // Only create if paper confirmed non-existent
         const result = await createNotionPage({
             databaseId,
             paper,

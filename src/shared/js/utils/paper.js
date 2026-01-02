@@ -677,28 +677,25 @@ const addOrUpdatePaper = async ({
         // tell the content script the paper has been parsed/updated
         contentScriptCallbacks["update"](paper);
         pushToRemote();
-        pushToNotion(paper.id);
 
-        // AI Auto-Tagging: 如果启用了自动打标且论文是新的且没有标签，则异步调用 AI 打标
+        // AI Auto-Tagging: 如果启用了自动打标且论文是新的且没有标签，则同步调用 AI 打标
         if (isNew && store) {
-            (async () => {
-                try {
-                    const aiAutoTag = await getStorage("aiAutoTagOnSave");
-                    const aiEnabled = await getStorage("aiTaggingEnabled");
+            try {
+                const aiAutoTag = await getStorage("aiAutoTagOnSave");
+                const aiEnabled = await getStorage("aiTaggingEnabled");
 
-                    if (aiAutoTag && aiEnabled && (!paper.tags || paper.tags.length === 0)) {
-                        const aiTags = await generateAITags(paper);
-                        if (aiTags && aiTags.length > 0) {
-                            paper.tags = mergeTagsWithAI(paper.tags || [], aiTags);
-                            global.state.papers[paper.id] = paper;
-                            chrome.storage.local.set({ papers: global.state.papers });
-                            log("[AI Tagging] Auto-tagged paper:", paper.id, aiTags);
-                        }
+                if (aiAutoTag && aiEnabled && (!paper.tags || paper.tags.length === 0)) {
+                    const aiTags = await generateAITags(paper);
+                    if (aiTags && aiTags.length > 0) {
+                        paper.tags = mergeTagsWithAI(paper.tags || [], aiTags);
+                        global.state.papers[paper.id] = paper;
+                        chrome.storage.local.set({ papers: global.state.papers });
+                        log("[AI Tagging] Auto-tagged paper:", paper.id, aiTags);
                     }
-                } catch (error) {
-                    console.error("[AI Tagging] Auto-tag failed:", error);
                 }
-            })();
+            } catch (error) {
+                console.error("[AI Tagging] Auto-tag failed:", error);
+            }
         }
 
         let notifText;
