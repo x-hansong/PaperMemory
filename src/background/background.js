@@ -335,55 +335,70 @@ const pushSyncPapers = async () => {
 };
 
 // Notion sync functions
+const notionSyncLocks = new Map();
+
 const pushNotionSyncPaper = async (paperId) => {
     if (!(await shouldSyncNotion())) return;
     if (!paperId) return;
 
-    try {
-        badgeWait("Notion...");
-        const start = Date.now();
+    if (notionSyncLocks.has(paperId)) {
+        return await notionSyncLocks.get(paperId);
+    }
 
-        const token = await getStorage("notionToken");
-        const databaseId = await getStorage("notionDatabaseId");
-        const papers = await getStorage("papers");
+    const task = (async () => {
+        try {
+            badgeWait("Notion...");
+            const start = Date.now();
 
-        const paper = papers[paperId];
-        if (!paper) {
-            warn("Paper not found for Notion sync:", paperId);
-            return;
-        }
+            const token = await getStorage("notionToken");
+            const databaseId = await getStorage("notionDatabaseId");
+            const papers = await getStorage("papers");
 
-        consoleHeader(`Syncing to Notion`);
-        log("Syncing paper to Notion:", paper.id);
-
-        const result = await syncPaperToNotion({
-            paper: paper,
-            databaseId: databaseId,
-            token: token,
-            skipExisting: true
-        });
-
-        const duration = (Date.now() - start) / 1e3;
-
-        if (result.success) {
-            if (result.skipped) {
-                info(`Paper already in Notion, skipped (${duration}s)`);
-            } else {
-                logOk(`Synced to Notion successfully (${duration}s)`);
+            const paper = papers[paperId];
+            if (!paper) {
+                warn("Paper not found for Notion sync:", paperId);
+                return;
             }
-            badgeOk();
-        } else {
-            warn(`Failed to sync to Notion: ${result.error}`);
+
+            consoleHeader(`Syncing to Notion`);
+            log("Syncing paper to Notion:", paper.id);
+
+            const result = await syncPaperToNotion({
+                paper: paper,
+                databaseId: databaseId,
+                token: token,
+                skipExisting: true
+            });
+
+            const duration = (Date.now() - start) / 1e3;
+
+            if (result.success) {
+                if (result.skipped) {
+                    info(`Paper already in Notion, skipped (${duration}s)`);
+                } else {
+                    logOk(`Synced to Notion successfully (${duration}s)`);
+                }
+                badgeOk();
+            } else {
+                warn(`Failed to sync to Notion: ${result.error}`);
+                badgeError();
+            }
+
+            console.groupEnd();
+        } catch (e) {
+            logError("[pushNotionSyncPaper]", e);
             badgeError();
         }
 
-        console.groupEnd();
-    } catch (e) {
-        logError("[pushNotionSyncPaper]", e);
-        badgeError();
-    }
+        badgeClear();
+    })();
 
-    badgeClear();
+    notionSyncLocks.set(paperId, task);
+    try {
+        return await task;
+    } finally {
+        notionSyncLocks.delete(paperId);
+    }
 };
 
 const syncAllNotionPapers = async (papers) => {

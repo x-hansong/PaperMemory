@@ -218,9 +218,40 @@ const createNotionPage = async ({ databaseId, paper, token }) => {
 };
 
 /**
+ * Update an existing page in Notion database
+ */
+const updateNotionPage = async ({ pageId, paper, token }) => {
+    try {
+        const properties = paperToNotionProperties(paper);
+
+        const response = await notionRequest({
+            endpoint: `/pages/${pageId}`,
+            method: "PATCH",
+            body: {
+                properties: properties
+            },
+            token
+        });
+
+        return { ok: true, page: response };
+    } catch (error) {
+        return {
+            ok: false,
+            error: formatNotionError(error)
+        };
+    }
+};
+
+/**
  * Sync a single paper to Notion
  */
-const syncPaperToNotion = async ({ paper, databaseId, token, skipExisting = true }) => {
+const syncPaperToNotion = async ({
+    paper,
+    databaseId,
+    token,
+    skipExisting = true,
+    updateExisting = true
+}) => {
     try {
         const checkResult = await checkNotionPageExists({
             databaseId,
@@ -236,9 +267,26 @@ const syncPaperToNotion = async ({ paper, databaseId, token, skipExisting = true
             };
         }
 
-        // If paper exists and we should skip, return success
-        if (checkResult.exists && skipExisting) {
-            return { success: true, skipped: true };
+        if (checkResult.exists) {
+            if (updateExisting) {
+                const updateResult = await updateNotionPage({
+                    pageId: checkResult.page.id,
+                    paper,
+                    token
+                });
+
+                if (updateResult.ok) {
+                    return { success: true, skipped: true, updated: true };
+                }
+
+                return { success: false, error: updateResult.error };
+            }
+
+            if (skipExisting) {
+                return { success: true, skipped: true };
+            }
+
+            return { success: false, error: "Paper already exists in Notion." };
         }
 
         // Only create if paper confirmed non-existent
@@ -809,6 +857,7 @@ if (typeof module !== "undefined" && module.exports != null) {
         checkNotionPageExists,
         paperToNotionProperties,
         createNotionPage,
+        updateNotionPage,
         syncPaperToNotion,
         syncAllPapersToNotion,
         syncIncrementalPapersToNotion,
