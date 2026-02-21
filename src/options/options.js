@@ -638,6 +638,18 @@ const handleDownloadBibtexPlainClick = () => {
     });
 };
 
+const handleDownloadMigrationPackageClick = async () => {
+    const now = new Date();
+    const date = now.toLocaleDateString().replaceAll("/", ".");
+    const time = now.toLocaleTimeString().replaceAll(":", ".");
+    const payload = await buildMigrationPackage();
+    downloadTextFile(
+        JSON.stringify(payload, null, 2),
+        `PaperMemory-migration-${date}-${time}.json`,
+        "text/json"
+    );
+};
+
 const handleConfirmOverwrite = (papersToWrite, warning) => (e) => {
     setHTML(
         "overwriteFeedback",
@@ -739,6 +751,85 @@ const handleSelectOverwriteFile = () => {
     findEl({ element: "overwrite-arxivmemory-button" }).disabled = false;
 };
 
+const handleSelectMigrationPackageFile = () => {
+    let file = document.getElementById("import-migration-package-input").files;
+    if (!file || file.length < 1) {
+        return;
+    }
+    file = file[0];
+    setHTML("import-migration-file-name", file.name);
+    if (!file.name.endsWith(".json")) return;
+    findEl({ element: "import-migration-package-button" }).disabled = false;
+};
+
+const handleImportMigrationPackage = () => {
+    let file = document.getElementById("import-migration-package-input").files;
+    if (!file || file.length < 1) {
+        return;
+    }
+    file = file[0];
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        showId("importMigrationFeedback");
+        setHTML(
+            "importMigrationFeedback",
+            `<div class="pm-container"><div class="sk-folding-cube"><div class="sk-cube1 sk-cube"></div><div class="sk-cube2 sk-cube"></div><div class="sk-cube4 sk-cube"></div><div class="sk-cube3 sk-cube"></div></div></div>`
+        );
+
+        try {
+            const payload = JSON.parse(e.target.result);
+            const prepared = await prepareMigrationImportData(payload);
+            if (!prepared.success) {
+                setHTML(
+                    "importMigrationFeedback",
+                    `<strong>Error:</strong><br/>${prepared.message}`
+                );
+                return;
+            }
+
+            const warning = prepared.warning
+                ? "\n\nValidation warnings were found in imported papers."
+                : "";
+            const confirmMessage =
+                "This will overwrite your local Memory and configuration (including sensitive credentials). Continue?" +
+                warning;
+            if (!confirm(confirmMessage)) {
+                setHTML("importMigrationFeedback", "Import cancelled.");
+                return;
+            }
+
+            setHTML(
+                "importMigrationFeedback",
+                `<div class="pm-container"><div class="sk-folding-cube"><div class="sk-cube1 sk-cube"></div><div class="sk-cube2 sk-cube"></div><div class="sk-cube4 sk-cube"></div><div class="sk-cube3 sk-cube"></div></div></div>`
+            );
+
+            await setStorage("papers", prepared.papersToWrite);
+            await new Promise((resolve) => {
+                chrome.storage.local.remove(global.migrationConfigKeys ?? [], () =>
+                    resolve(true)
+                );
+            });
+            await new Promise((resolve) => {
+                chrome.storage.local.set(prepared.configToWrite, () => resolve(true));
+            });
+
+            setHTML(
+                "importMigrationFeedback",
+                "<h4 style='margin: 1.5rem'>Migration package imported successfully. Reload this page to refresh the current state.</h4>"
+            );
+            val("import-migration-package-input", "");
+            findEl({ element: "import-migration-package-button" }).disabled = true;
+            setHTML("import-migration-file-name", "");
+        } catch (error) {
+            setHTML(
+                "importMigrationFeedback",
+                `<strong>Error:</strong><br/>${stringifyError(error)}`
+            );
+        }
+    };
+    reader.readAsText(file);
+};
+
 const handleExportTagsConfirm = () => {
     const tags = parseTags(findEl({ element: "export-tags-select" }));
     const operator = findEl({ element: "export-tags-operator" }).value;
@@ -786,8 +877,23 @@ const setupDataManagement = () => {
     addListener("download-arxivmemory", "click", handleDownloadMemoryClick);
     addListener("download-bibtex-json", "click", handleDownloadBibtexJsonClick);
     addListener("download-bibtex-plain", "click", handleDownloadBibtexPlainClick);
+    addListener(
+        "download-migration-package",
+        "click",
+        handleDownloadMigrationPackageClick
+    );
     addListener("overwrite-arxivmemory-button", "click", handleOverwriteMemory);
     addListener("overwrite-arxivmemory-input", "change", handleSelectOverwriteFile);
+    addListener(
+        "import-migration-package-input",
+        "change",
+        handleSelectMigrationPackageFile
+    );
+    addListener(
+        "import-migration-package-button",
+        "click",
+        handleImportMigrationPackage
+    );
 
     const tagOptions = [...global.state.paperTags]
         .sort()

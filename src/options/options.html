@@ -305,6 +305,53 @@
             </div>
 
             <br>
+            <h5 id="migration-package-title">Full Device Migration Package</h5>
+            <p>Export and import a single migration file that includes Memory data and local configuration.</p>
+            <p><strong>Warning:</strong> this package includes sensitive credentials (GitHub PAT, Notion Token, AI API key) in plain JSON.</p>
+
+            <div style="align-items: center;" class="row mb-3">
+                <div class="col-6">
+                    <p class="mb-0"> &gt; Export full migration package (data + config): </p>
+                </div>
+                <div class="col-2">
+                    <button class="ms-2 flex-center-between code-font" id="download-migration-package">
+                        .json&nbsp;
+                        <svg viewBox="0 0 24 24" style="height: 18px; width: 18px; color: black; stroke: black">
+                            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                            <line x1="4" y1="20" x2="20" y2="20" />
+                            <line x1="12" y1="14" x2="12" y2="4" />
+                            <line x1="12" y1="14" x2="16" y2="10" />
+                            <line x1="12" y1="14" x2="8" y2="10" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div id="import-migration-container" class="row mb-4">
+                <div class="col-6" style="display: flex; align-items: center;">
+                    <p class="mb-0"> &gt; Import migration package (this will <strong style="text-decoration: underline;">overwrite</strong> your local data and config): </p>
+                </div>
+                <div class="col-2">
+                    <label id="import-migration-label" for="import-migration-package-input" class="ms-2 file-upload-label">Select file</label>
+                    <input type="file" id="import-migration-package-input" style="display: none;"></input>
+                </div>
+                <div class="col-2">
+                    <button id="import-migration-package-button" disabled class="ms-2 flex-center-between code-font">
+                        .json&nbsp;
+                        <svg viewBox="0 0 24 24" style="height: 18px; width: 18px; color: black; stroke: black">
+                            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                            <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
+                            <polyline points="7 9 12 4 17 9" />
+                            <line x1="12" y1="4" x2="12" y2="16" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="col-6"></div>
+                <div class="col-6 mt-2"><span id="import-migration-file-name"></span></div>
+                <div style="display: none; margin: auto; margin-top: 1rem" id="importMigrationFeedback" class="col-11"></div>
+            </div>
+
+            <br>
             <h5 id="memory-export-tags-title">Export by tags</h5>
 
             <p>Select papers to export by providing a list of tags. If you select the <code>AND</code> operator, papers
