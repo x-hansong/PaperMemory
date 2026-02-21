@@ -164,6 +164,37 @@ global.prefsStorageKeys = [
 ];
 
 /**
+ * Storage keys included in full-device migration package exports/imports.
+ * This list intentionally includes sensitive credentials for one-shot migration.
+ */
+global.migrationConfigKeys = [
+    "prefs",
+    "pwcPrefs",
+    "autoTags",
+    "ignoreSources",
+    "urlHashToId",
+    "defaultKeyboardAction",
+    "syncPAT",
+    "syncState",
+    "syncId",
+    "syncTest",
+    "notionToken",
+    "notionDatabaseId",
+    "notionSyncState",
+    "notionAutoSyncEnabled",
+    "notionSyncInterval",
+    "aiTaggingEnabled",
+    "aiApiBaseUrl",
+    "aiApiKey",
+    "aiModel",
+    "aiTaggingPrompt",
+    "aiAutoTagOnSave",
+    "aiAreaTags",
+    "aiTaskTags",
+    "aiMethodTags",
+];
+
+/**
  * Extra data per source
  */
 global.sourceExtras = {
@@ -793,6 +824,7 @@ if (typeof module !== "undefined" && module.exports != null) {
         prefsCheckNames: global.prefsCheckNames,
         prefsCheckDefaultFalse: global.prefsCheckDefaultFalse,
         prefsStorageKeys: global.prefsStorageKeys,
+        migrationConfigKeys: global.migrationConfigKeys,
         sourceExtras: global.sourceExtras,
         preprintSources: global.preprintSources,
         knownPaperPages: global.knownPaperPages,

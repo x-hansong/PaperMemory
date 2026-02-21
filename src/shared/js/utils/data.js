@@ -828,6 +828,120 @@ const prepareOverwriteData = async (data) => {
     };
 };
 
+const migrationPackageSchemaVersion = 1;
+
+/**
+ * Ensure migration config object has all expected keys.
+ * Missing keys are set to null to preserve deterministic full-device snapshots.
+ * @param {object} config
+ * @returns {object}
+ */
+const normalizeMigrationConfig = (config = {}) => {
+    const keys = global.migrationConfigKeys ?? [];
+    const normalized = {};
+    for (const key of keys) {
+        const value = config.hasOwnProperty(key) ? config[key] : null;
+        normalized[key] = typeof value === "undefined" ? null : value;
+    }
+    return normalized;
+};
+
+/**
+ * Build a full migration package from local storage.
+ * @returns {Promise<object>}
+ */
+const buildMigrationPackage = async () => {
+    const papers = (await getStorage("papers")) ?? {
+        __dataVersion: getManifestDataVersion(),
+    };
+    const config = normalizeMigrationConfig(
+        (await getStorage(global.migrationConfigKeys ?? [])) ?? {}
+    );
+    const manifestVersion = chrome.runtime.getManifest().version;
+    return {
+        meta: {
+            schemaVersion: migrationPackageSchemaVersion,
+            exportedAt: new Date().toISOString(),
+            appVersion: manifestVersion,
+            dataVersion: papers.__dataVersion ?? getManifestDataVersion(),
+        },
+        data: {
+            papers: papers,
+        },
+        config: config,
+    };
+};
+
+/**
+ * Validate the basic structure of a migration package.
+ * @param {object} payload
+ * @returns {object} {ok: boolean, reason?: string}
+ */
+const validateMigrationPackage = (payload) => {
+    if (!payload || typeof payload !== "object") {
+        return { ok: false, reason: "Invalid file: expected a JSON object." };
+    }
+    if (!payload.meta || typeof payload.meta !== "object") {
+        return { ok: false, reason: "Invalid package: missing `meta` object." };
+    }
+    if (
+        !payload.meta.hasOwnProperty("schemaVersion") ||
+        typeof payload.meta.schemaVersion !== "number"
+    ) {
+        return {
+            ok: false,
+            reason: "Invalid package: `meta.schemaVersion` must be a number.",
+        };
+    }
+    if (payload.meta.schemaVersion > migrationPackageSchemaVersion) {
+        return {
+            ok: false,
+            reason:
+                "Unsupported package schema version. Please update the extension first.",
+        };
+    }
+    if (!payload.data || typeof payload.data !== "object") {
+        return { ok: false, reason: "Invalid package: missing `data` object." };
+    }
+    if (!payload.data.papers || typeof payload.data.papers !== "object") {
+        return {
+            ok: false,
+            reason: "Invalid package: missing `data.papers` object.",
+        };
+    }
+    if (!payload.config || typeof payload.config !== "object") {
+        return { ok: false, reason: "Invalid package: missing `config` object." };
+    }
+    return { ok: true };
+};
+
+/**
+ * Validate and prepare migration package content before writing to storage.
+ * @param {object} payload migration package JSON
+ * @returns {Promise<object>}
+ */
+const prepareMigrationImportData = async (payload) => {
+    const validation = validateMigrationPackage(payload);
+    if (!validation.ok) {
+        return { success: false, message: validation.reason };
+    }
+
+    const prepared = await prepareOverwriteData(payload.data.papers);
+    if (!prepared.success) {
+        return {
+            success: false,
+            message: prepared.message || "Could not prepare migration data.",
+        };
+    }
+
+    return {
+        success: true,
+        papersToWrite: prepared.papersToWrite,
+        warning: prepared.warning,
+        configToWrite: normalizeMigrationConfig(payload.config),
+    };
+};
+
 const makeVenue = async (paper) => {
     let venue = "";
     if (paper.note && paper.note.match(/(accepted|published)\ @\ .+\(?\d{4}\)?/i)) {
@@ -919,6 +1033,11 @@ if (typeof module !== "undefined" && module.exports != null) {
         versionToSemantic,
         validatePaper,
         prepareOverwriteData,
+        migrationPackageSchemaVersion,
+        normalizeMigrationConfig,
+        buildMigrationPackage,
+        validateMigrationPackage,
+        prepareMigrationImportData,
         makeVenue,
         makeTitleHashToIdList,
     };
