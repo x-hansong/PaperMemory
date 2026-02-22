@@ -778,6 +778,11 @@ const addOrUpdatePaper = async ({
         contentScriptCallbacks["preprints"](paper);
         pushToRemote();
         pushToNotion(paper.id);
+        if (await shouldSyncSupabase()) {
+            if (await shouldAutoPushSupabase()) {
+                pushToSupabase(paper.id);
+            }
+        }
 
         info(`Done processing paper (${(Date.now() - aouStart) / 1e3}s).`);
         console.groupEnd();

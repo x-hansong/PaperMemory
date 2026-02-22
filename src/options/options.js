@@ -1822,6 +1822,223 @@ const setupNotionSync = async () => {
 };
 
 // ----------------------------
+// -----  Supabase Setup  -----
+// ----------------------------
+
+const setupSupabaseSync = async () => {
+    const supabaseUrl = await getStorage("supabaseUrl");
+    const supabaseAnonKey = await getStorage("supabaseAnonKey");
+    const supabaseSyncKey = await getStorage("supabaseSyncKey");
+    const supabaseSyncState = await getStorage("supabaseSyncState");
+    const autoPullEnabled = await getStorage("supabaseAutoPullEnabled");
+    const autoPushEnabled = await getStorage("supabaseAutoPushEnabled");
+    const syncInterval = await getStorage("supabaseSyncInterval") || 60;
+    const blockedError = await getStorage("supabaseAutoPullBlockedError");
+
+    if (supabaseUrl) {
+        findEl({ element: "supabase-url-input" }).value = supabaseUrl;
+    }
+    if (supabaseAnonKey) {
+        findEl({ element: "supabase-anon-key-input" }).value = supabaseAnonKey;
+    }
+    if (supabaseSyncKey) {
+        findEl({ element: "supabase-sync-key-input" }).value = supabaseSyncKey;
+    }
+    if (supabaseUrl && supabaseAnonKey && supabaseSyncKey) {
+        showId("supabase-sync-section");
+    }
+    if (supabaseSyncState) {
+        findEl({ element: "check-supabase-sync" }).checked = true;
+    }
+    if (autoPullEnabled) {
+        findEl({ element: "check-supabase-auto-pull" }).checked = true;
+    }
+    if (autoPushEnabled) {
+        findEl({ element: "check-supabase-auto-push" }).checked = true;
+    }
+    findEl({ element: "supabase-sync-interval" }).value = syncInterval;
+
+    if (blockedError) {
+        setHTML(
+            "supabase-feedback",
+            `Auto-pull was disabled after a failure: ${blockedError}`
+        );
+        alert(
+            "Supabase scheduled pull failed and has been disabled.\n\n" +
+                blockedError +
+                "\n\nPlease fix credentials/access settings and re-enable auto pull."
+        );
+        await setStorage("supabaseAutoPullBlockedError", null);
+    }
+
+    addListener("save-supabase-credentials", "click", async () => {
+        const url = findEl({ element: "supabase-url-input" }).value.trim();
+        const anonKey = findEl({ element: "supabase-anon-key-input" }).value.trim();
+        const syncKey = findEl({ element: "supabase-sync-key-input" }).value.trim();
+
+        if (!url || !anonKey || !syncKey) {
+            setHTML("supabase-feedback", "Please fill in URL, anon key and sync key");
+            return;
+        }
+        if (syncKey.length < 8) {
+            setHTML("supabase-feedback", "syncKey must be at least 8 characters");
+            return;
+        }
+
+        await setStorage("supabaseUrl", url);
+        await setStorage("supabaseAnonKey", anonKey);
+        await setStorage("supabaseSyncKey", syncKey);
+        setHTML("supabase-feedback", "Credentials saved successfully!");
+        showId("supabase-sync-section");
+    });
+
+    addListener("test-supabase-connection", "click", async () => {
+        const url = findEl({ element: "supabase-url-input" }).value.trim();
+        const anonKey = findEl({ element: "supabase-anon-key-input" }).value.trim();
+        const syncKey = findEl({ element: "supabase-sync-key-input" }).value.trim();
+
+        showId("supabase-loader");
+        setHTML("supabase-feedback", "Testing connection...");
+
+        const result = await sendMessageToBackground({
+            type: "testSupabaseConnection",
+            url,
+            anonKey,
+            syncKey,
+        });
+        hideId("supabase-loader");
+
+        if (result.ok) {
+            setHTML("supabase-feedback", "Connection successful! Supabase is accessible.");
+            showId("supabase-sync-section");
+        } else {
+            setHTML(
+                "supabase-feedback",
+                `Connection failed: ${result.reason || result.error || "Unknown error"}`
+            );
+        }
+    });
+
+    addListener("check-supabase-sync", "change", async (e) => {
+        await setStorage("supabaseSyncState", e.target.checked);
+        if (!e.target.checked) return;
+
+        const result = await initSupabaseSync();
+        if (!result.ok) {
+            e.target.checked = false;
+            await setStorage("supabaseSyncState", false);
+            alert(`Failed to enable Supabase sync: ${result.reason || result.error}`);
+        }
+    });
+
+    addListener("manual-supabase-push", "click", async () => {
+        const papers = (await getStorage("papers")) || {};
+        const count = Object.keys(papers).filter((id) => !id.startsWith("__")).length;
+        if (
+            !confirm(
+                `This will upsert ${count} local papers to Supabase.\n` +
+                    "Existing rows with the same paper id will be updated.\n\nContinue?"
+            )
+        ) {
+            return;
+        }
+
+        showId("supabase-push-loader");
+        setHTML("supabase-push-feedback", "Pushing to Supabase...");
+        setHTML("supabase-push-progress", "");
+
+        const result = await sendMessageToBackground({
+            type: "syncAllSupabasePapers",
+            papers,
+        });
+        hideId("supabase-push-loader");
+
+        if (result.ok) {
+            setHTML(
+                "supabase-push-feedback",
+                `Push complete! Synced ${result.synced}/${result.total}.`
+            );
+        } else {
+            setHTML("supabase-push-feedback", `Push failed: ${result.error}`);
+            alert(`Supabase push failed: ${result.error}`);
+        }
+    });
+
+    addListener("pull-from-supabase", "click", async () => {
+        const localPapers = (await getStorage("papers")) || {};
+        const localCount = Object.keys(localPapers).filter(
+            (id) => !id.startsWith("__")
+        ).length;
+
+        if (
+            !confirm(
+                `This will pull all papers from Supabase and OVERWRITE local memory.\n\n` +
+                    `You currently have ${localCount} papers locally.\n` +
+                    "Supabase data takes priority.\n\nContinue?"
+            )
+        ) {
+            return;
+        }
+
+        showId("supabase-pull-loader");
+        setHTML("supabase-pull-feedback", "Pulling from Supabase...");
+        setHTML("supabase-pull-progress", "");
+
+        const result = await sendMessageToBackground({
+            type: "syncAllPapersFromSupabase",
+        });
+        hideId("supabase-pull-loader");
+
+        if (result.ok) {
+            setHTML(
+                "supabase-pull-feedback",
+                `Pull complete! Local papers: ${result.before} -> ${result.after}`
+            );
+            if (result.warning) {
+                setHTML(
+                    "supabase-pull-progress",
+                    `<small>Non-breaking warnings:<br>${result.warning}</small>`
+                );
+            }
+            setTimeout(() => {
+                if (confirm("Pull successful! Reload page to see updates?")) {
+                    location.reload();
+                }
+            }, 1000);
+        } else {
+            setHTML("supabase-pull-feedback", `Pull failed: ${result.error}`);
+            alert("Supabase pull failed.\n\n" + result.error);
+        }
+    });
+
+    addListener("check-supabase-auto-pull", "change", async (e) => {
+        await setStorage("supabaseAutoPullEnabled", e.target.checked);
+        const result = await sendMessageToBackground({ type: "setupSupabaseAutoPull" });
+        if (!result.ok) {
+            e.target.checked = false;
+            await setStorage("supabaseAutoPullEnabled", false);
+            alert(`Failed to update Supabase auto pull: ${result.error}`);
+        }
+    });
+
+    addListener("supabase-sync-interval", "change", async (e) => {
+        await setStorage("supabaseSyncInterval", parseInt(e.target.value));
+        if (await getStorage("supabaseAutoPullEnabled")) {
+            const result = await sendMessageToBackground({
+                type: "setupSupabaseAutoPull",
+            });
+            if (!result.ok) {
+                alert(`Failed to update Supabase interval: ${result.error}`);
+            }
+        }
+    });
+
+    addListener("check-supabase-auto-push", "change", async (e) => {
+        await setStorage("supabaseAutoPushEnabled", e.target.checked);
+    });
+};
+
+// ----------------------------
 // -----  Document Ready  -----
 // ----------------------------
 
@@ -1840,5 +2057,6 @@ const setupNotionSync = async () => {
     setupSync();
     await setupAITagging();
     await setupNotionSync();
+    await setupSupabaseSync();
     setupModals();
 })();

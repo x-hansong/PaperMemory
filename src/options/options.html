@@ -768,6 +768,113 @@
 
         <hr>
 
+        <div class="section">
+            <h2 id="supabase-synchronization">Supabase Synchronization (Primary Source)</h2>
+
+            <h4 id="supabase-how-it-works">How it works</h4>
+
+            <ul>
+                <li>Supabase is treated as your primary source of truth</li>
+                <li>Pulling from Supabase overwrites local papers</li>
+                <li>You can manually push local papers to Supabase</li>
+                <li>Automatic pull runs on a fixed schedule (default every hour)</li>
+                <li>Optional auto-push writes newly saved papers to Supabase</li>
+            </ul>
+
+            <h4 id="supabase-setup">Setup Instructions</h4>
+            <ol>
+                <li>Create table <code>pm_papers_sync</code> in Supabase with unique key <code>(sync_key, paper_id)</code></li>
+                <li>Configure table access policies for your sync key strategy</li>
+                <li>Copy your project URL and anon key from Project Settings -> API</li>
+                <li>Create your own sync key (at least 8 chars)</li>
+            </ol>
+
+            <h4 id="supabase-credentials">Credentials</h4>
+            <div>
+                <label for="supabase-url-input">Supabase URL:</label>
+                <input name="supabase-url-input" id="supabase-url-input" type="text"
+                    placeholder="https://xxx.supabase.co" style="width: 400px;" />
+                <br />
+
+                <label for="supabase-anon-key-input">Supabase Anon Key:</label>
+                <input name="supabase-anon-key-input" id="supabase-anon-key-input" type="password"
+                    placeholder="eyJhbGciOi..." style="width: 400px;" />
+                <br />
+
+                <label for="supabase-sync-key-input">Sync Key (namespace):</label>
+                <input name="supabase-sync-key-input" id="supabase-sync-key-input" type="password"
+                    placeholder="at least 8 characters" style="width: 400px;" />
+                <br />
+
+                <input id="save-supabase-credentials" type="button" value="Save Credentials">
+                <input id="test-supabase-connection" type="button" value="Test Connection">
+
+                <br />
+                <div><small>Use anon key only. Never use service_role key in browser extension.</small></div>
+
+                <div>
+                    <div class="pm-loader" id="supabase-loader" style="display: none;"></div>
+                    <p id="supabase-feedback"></p>
+                </div>
+            </div>
+
+            <h4 id="supabase-sync-controls">Sync Controls</h4>
+            <div id="supabase-sync-section" style="display: none;">
+                <div>
+                    <label for="check-supabase-sync">
+                        <input type="checkbox" id="check-supabase-sync" name="check-supabase-sync">
+                        Enable Supabase sync
+                    </label>
+                </div>
+
+                <div style="margin-top: 1rem;">
+                    <h5>Manual Push (Local -> Supabase)</h5>
+                    <p>Upload all local papers to Supabase using upsert.</p>
+                    <input id="manual-supabase-push" type="button" value="Push All Papers to Supabase">
+                    <div class="pm-loader" id="supabase-push-loader" style="display: none;"></div>
+                    <div id="supabase-push-progress"></div>
+                    <p id="supabase-push-feedback"></p>
+                </div>
+
+                <div style="margin-top: 2rem;">
+                    <h5>Manual Pull (Supabase -> Local)</h5>
+                    <p>Pull all papers from Supabase to local storage (Supabase takes priority and overwrites local data).</p>
+                    <input id="pull-from-supabase" type="button" value="Pull from Supabase to Local">
+                    <div class="pm-loader" id="supabase-pull-loader" style="display: none;"></div>
+                    <div id="supabase-pull-progress"></div>
+                    <p id="supabase-pull-feedback"></p>
+                </div>
+
+                <div style="margin-top: 2rem;">
+                    <h5>Automatic Pull Schedule</h5>
+                    <label for="check-supabase-auto-pull">
+                        <input type="checkbox" id="check-supabase-auto-pull" name="check-supabase-auto-pull">
+                        Enable scheduled pull (Supabase -> Local)
+                    </label>
+                    <br />
+                    <label for="supabase-sync-interval">Sync interval:</label>
+                    <select id="supabase-sync-interval">
+                        <option value="30">Every 30 minutes</option>
+                        <option value="60" selected>Every hour</option>
+                        <option value="180">Every 3 hours</option>
+                        <option value="360">Every 6 hours</option>
+                        <option value="720">Every 12 hours</option>
+                        <option value="1440">Daily</option>
+                    </select>
+                    <p><small>If scheduled pull fails, it will be disabled until you resolve the issue and re-enable it.</small></p>
+                </div>
+
+                <div style="margin-top: 1rem;">
+                    <label for="check-supabase-auto-push">
+                        <input type="checkbox" id="check-supabase-auto-push" name="check-supabase-auto-push">
+                        Enable auto-push on paper save (Local -> Supabase)
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <hr>
+
         <div class="section" id="footer">
 
             <p style="color: gray;"><em>If you like PaperMemory please consider sharing, starring on Github and rating
