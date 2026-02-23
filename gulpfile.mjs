@@ -45,6 +45,7 @@ function utilsJS() {
             "src/shared/js/utils/bibtexParser.js",
             "src/shared/js/utils/functions.js",
             "src/shared/js/utils/notion.js",
+            "src/shared/js/utils/supabase.js",
             "src/shared/js/utils/sync.js",
             "src/shared/js/utils/data.js",
             "src/shared/js/utils/aiTagging.js",

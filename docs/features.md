@@ -319,6 +319,12 @@ This means your data gets written as a commit to a Gist on your Github account, 
 
 This feature can be enabled in the [Advanced Options](./configuration.md#advanced-options).
 
+PaperMemory also supports Supabase synchronization in a primary-source mode:
+
+- Supabase can be configured as the source of truth for your paper library.
+- Scheduled pulls can overwrite local data to keep devices aligned.
+- Manual full push and optional auto-push are available for local updates.
+
 <p style="clear: both;" />
 
 !!! warning

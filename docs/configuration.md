@@ -175,3 +175,7 @@ More customization options and features are available in the **Advanced Options 
 `Online synchronization`
 
 : Enable [Online Synchronization](features.md#online-synchronization) by providing a Github Personal Access Token.
+
+`Supabase synchronization (primary source)`
+
+: Configure Supabase URL + anon key + sync key to enable manual push/pull and scheduled pull where Supabase overwrites local papers.

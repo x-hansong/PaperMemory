@@ -436,6 +436,80 @@ const syncAllToNotion = async () => {
 };
 
 // ----------------------------------------------------
+// -----  SUPABASE SYNC FUNCTIONS  --------------------
+// ----------------------------------------------------
+
+/**
+ * Push a single paper to Supabase (called after paper save)
+ */
+const pushToSupabase = async (paperId) => {
+    return await sendMessageToBackground({ type: "writeSupabaseSync", paperId });
+};
+
+/**
+ * Check if Supabase sync is enabled
+ */
+const shouldSyncSupabase = async () => {
+    return !!(await getStorage("supabaseSyncState"));
+};
+
+/**
+ * Check if Supabase auto push is enabled
+ */
+const shouldAutoPushSupabase = async () => {
+    return !!(await getStorage("supabaseAutoPushEnabled"));
+};
+
+/**
+ * Initialize Supabase sync
+ */
+const initSupabaseSync = async () => {
+    if (!(await shouldSyncSupabase())) {
+        return { ok: false, reason: "disabled" };
+    }
+
+    const url = await getStorage("supabaseUrl");
+    const anonKey = await getStorage("supabaseAnonKey");
+    const syncKey = await getStorage("supabaseSyncKey");
+
+    if (!url || !anonKey || !syncKey) {
+        await setStorage("supabaseSyncState", false);
+        return { ok: false, reason: "missing_credentials" };
+    }
+    if (syncKey.length < 8) {
+        await setStorage("supabaseSyncState", false);
+        return { ok: false, reason: "invalid_sync_key" };
+    }
+
+    return await sendMessageToBackground({
+        type: "testSupabaseConnection",
+        url,
+        anonKey,
+        syncKey,
+    });
+};
+
+/**
+ * Manual sync all papers to Supabase
+ */
+const syncAllToSupabase = async () => {
+    const papers = await getStorage("papers");
+    return await sendMessageToBackground({
+        type: "syncAllSupabasePapers",
+        papers,
+    });
+};
+
+/**
+ * Pull all papers from Supabase
+ */
+const pullAllFromSupabase = async () => {
+    return await sendMessageToBackground({
+        type: "syncAllPapersFromSupabase",
+    });
+};
+
+// ----------------------------------------------------
 // -----  TESTS: modules for node.js environment  -----
 // ----------------------------------------------------
 if (typeof module !== "undefined" && module.exports != null) {
@@ -461,5 +535,11 @@ if (typeof module !== "undefined" && module.exports != null) {
         shouldSyncNotion,
         initNotionSync,
         syncAllToNotion,
+        pushToSupabase,
+        shouldSyncSupabase,
+        shouldAutoPushSupabase,
+        initSupabaseSync,
+        syncAllToSupabase,
+        pullAllFromSupabase,
     };
 }

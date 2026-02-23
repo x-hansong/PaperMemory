@@ -6,6 +6,7 @@ if (typeof importScripts === "function") {
         "../shared/js/utils/bibtexParser.js",
         "../shared/js/utils/functions.js",
         "../shared/js/utils/notion.js",
+        "../shared/js/utils/supabase.js",
         "../shared/js/utils/sync.js",
         "../shared/js/utils/data.js",
         "../shared/js/utils/paper.js",
@@ -522,6 +523,215 @@ const setupNotionAutoSync = async () => {
     }
 };
 
+// Supabase sync functions
+const supabaseSyncLocks = new Map();
+
+const getSupabaseConfigFromStorage = async () => {
+    const url = await getStorage("supabaseUrl");
+    const anonKey = await getStorage("supabaseAnonKey");
+    const syncKey = await getStorage("supabaseSyncKey");
+    return { url, anonKey, syncKey };
+};
+
+const testSupabaseConfigConnection = async () => {
+    try {
+        const { url, anonKey, syncKey } = await getSupabaseConfigFromStorage();
+        const result = await testSupabaseConnection({ url, anonKey, syncKey });
+        return result.ok
+            ? { ok: true }
+            : { ok: false, reason: result.reason || result.error || "Connection failed" };
+    } catch (e) {
+        logError("[testSupabaseConfigConnection]", e);
+        return { ok: false, reason: e.message };
+    }
+};
+
+const pushSupabaseSyncPaper = async (paperId) => {
+    if (!(await shouldSyncSupabase())) return { ok: false, reason: "disabled" };
+    if (!(await shouldAutoPushSupabase())) return { ok: false, reason: "auto_push_disabled" };
+    if (!paperId) return { ok: false, reason: "missing_paper_id" };
+
+    if (supabaseSyncLocks.has(paperId)) {
+        return await supabaseSyncLocks.get(paperId);
+    }
+
+    const task = (async () => {
+        try {
+            badgeWait("Supabase...");
+            const start = Date.now();
+
+            const { url, anonKey, syncKey } = await getSupabaseConfigFromStorage();
+            const papers = (await getStorage("papers")) ?? {};
+            const paper = papers[paperId];
+            if (!paper) {
+                return { ok: false, reason: "paper_not_found" };
+            }
+
+            const result = await upsertPapersToSupabase({
+                url,
+                anonKey,
+                syncKey,
+                papers: { [paperId]: paper },
+            });
+            const duration = (Date.now() - start) / 1e3;
+
+            if (!result.ok) {
+                badgeError();
+                return { ok: false, error: result.error };
+            }
+
+            info(`Supabase auto push ok (${duration}s): ${paperId}`);
+            badgeOk();
+            return { ok: true, synced: result.synced };
+        } catch (e) {
+            logError("[pushSupabaseSyncPaper]", e);
+            badgeError();
+            return { ok: false, error: e.message };
+        } finally {
+            badgeClear();
+        }
+    })();
+
+    supabaseSyncLocks.set(paperId, task);
+    try {
+        return await task;
+    } finally {
+        supabaseSyncLocks.delete(paperId);
+    }
+};
+
+const syncAllSupabasePapers = async (papers) => {
+    try {
+        badgeWait("Supa push");
+        const start = Date.now();
+        const localPapers = papers ?? ((await getStorage("papers")) ?? {});
+        const { url, anonKey, syncKey } = await getSupabaseConfigFromStorage();
+
+        const result = await upsertPapersToSupabase({
+            url,
+            anonKey,
+            syncKey,
+            papers: localPapers,
+            onProgress: (current, total, synced, totalRows) => {
+                log(
+                    `[Supabase push] batch ${current}/${total}, synced ${synced}/${totalRows}`
+                );
+            },
+        });
+
+        const duration = (Date.now() - start) / 1e3;
+        if (!result.ok) {
+            badgeError();
+            return { ok: false, error: result.error };
+        }
+
+        logOk(`Supabase push complete (${duration}s): ${result.synced}/${result.total}`);
+        badgeOk();
+        return { ok: true, synced: result.synced, total: result.total };
+    } catch (e) {
+        logError("[syncAllSupabasePapers]", e);
+        badgeError();
+        return { ok: false, error: e.message };
+    } finally {
+        badgeClear();
+    }
+};
+
+const syncAllFromSupabase = async ({ fromAlarm = false } = {}) => {
+    try {
+        badgeWait("Supa pull");
+        const start = Date.now();
+        const prevPapers = (await getStorage("papers")) ?? {};
+        const prevCount = Object.keys(prevPapers).filter((id) => !id.startsWith("__")).length;
+        const { url, anonKey, syncKey } = await getSupabaseConfigFromStorage();
+
+        const pulled = await pullPapersFromSupabase({
+            url,
+            anonKey,
+            syncKey,
+            onProgress: (currentTotal, pageCount) => {
+                log(`[Supabase pull] total=${currentTotal}, pageRows=${pageCount}`);
+            },
+        });
+        if (!pulled.ok) {
+            if (fromAlarm) {
+                await setStorage("supabaseAutoPullEnabled", false);
+                await setStorage(
+                    "supabaseAutoPullBlockedError",
+                    pulled.error || "Scheduled pull failed"
+                );
+                await setupSupabaseAutoPull();
+            }
+            badgeError();
+            return { ok: false, error: pulled.error };
+        }
+
+        const prepared = await prepareOverwriteData(pulled.papers);
+        if (!prepared.success) {
+            if (fromAlarm) {
+                await setStorage("supabaseAutoPullEnabled", false);
+                await setStorage(
+                    "supabaseAutoPullBlockedError",
+                    prepared.message || "Supabase pull overwrite failed"
+                );
+                await setupSupabaseAutoPull();
+            }
+            badgeError();
+            return { ok: false, error: prepared.message || "Could not overwrite local papers" };
+        }
+
+        await setStorage("papers", prepared.papersToWrite);
+        const afterCount = Object.keys(prepared.papersToWrite).filter(
+            (id) => !id.startsWith("__")
+        ).length;
+        const duration = (Date.now() - start) / 1e3;
+
+        logOk(
+            `Supabase pull complete (${duration}s): local ${prevCount} -> ${afterCount}`
+        );
+        badgeOk();
+        return {
+            ok: true,
+            before: prevCount,
+            after: afterCount,
+            warning: prepared.warning || "",
+        };
+    } catch (e) {
+        logError("[syncAllFromSupabase]", e);
+        if (fromAlarm) {
+            await setStorage("supabaseAutoPullEnabled", false);
+            await setStorage("supabaseAutoPullBlockedError", e.message);
+            await setupSupabaseAutoPull();
+        }
+        badgeError();
+        return { ok: false, error: e.message };
+    } finally {
+        badgeClear();
+    }
+};
+
+const setupSupabaseAutoPull = async () => {
+    try {
+        const enabled = await getStorage("supabaseAutoPullEnabled");
+        const interval = await getStorage("supabaseSyncInterval") || 60;
+
+        if (enabled) {
+            chrome.alarms.create("supabaseAutoPull", {
+                periodInMinutes: interval,
+            });
+            log(`Supabase auto pull enabled: every ${interval} minutes`);
+        } else {
+            chrome.alarms.clear("supabaseAutoPull");
+            log("Supabase auto pull disabled");
+        }
+
+        return { ok: true };
+    } catch (e) {
+        logError("[setupSupabaseAutoPull]", e);
+        return { ok: false, error: e.message };
+    }
+};
+
 const fetchArxivXML = async (paperId) => {
     const arxivId = paperId.replace("Arxiv-", "").replace("_", "/");
     const response = await fetch(
@@ -593,6 +803,22 @@ chrome.runtime.onMessage.addListener((payload, sender, sendResponse) => {
         syncAllFromNotion().then(sendResponse);
     } else if (payload.type === "setupNotionAutoSync") {
         setupNotionAutoSync().then(sendResponse);
+    } else if (payload.type === "testSupabaseConnection") {
+        testSupabaseConnection({
+            url: payload.url,
+            anonKey: payload.anonKey,
+            syncKey: payload.syncKey,
+        }).then(sendResponse);
+    } else if (payload.type === "testStoredSupabaseConnection") {
+        testSupabaseConfigConnection().then(sendResponse);
+    } else if (payload.type === "writeSupabaseSync") {
+        pushSupabaseSyncPaper(payload.paperId).then(sendResponse);
+    } else if (payload.type === "syncAllSupabasePapers") {
+        syncAllSupabasePapers(payload.papers).then(sendResponse);
+    } else if (payload.type === "syncAllPapersFromSupabase") {
+        syncAllFromSupabase().then(sendResponse);
+    } else if (payload.type === "setupSupabaseAutoPull") {
+        setupSupabaseAutoPull().then(sendResponse);
     } else if (payload.type === "testAIConnection") {
         // Test AI connection
         (async () => {
@@ -702,8 +928,12 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === "notionAutoSync") {
         log("Running scheduled Notion sync...");
         await syncAllFromNotion();
+    } else if (alarm.name === "supabaseAutoPull") {
+        log("Running scheduled Supabase pull...");
+        await syncAllFromSupabase({ fromAlarm: true });
     }
 });
 
 // Initialize Notion auto-sync on startup
 setupNotionAutoSync();
+setupSupabaseAutoPull();
